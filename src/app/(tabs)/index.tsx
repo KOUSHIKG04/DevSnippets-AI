@@ -69,7 +69,7 @@ export default function HomeScreen() {
               { color: colors.foreground, fontSize: isWide ? 34 : 30 },
             ]}
           >
-            DevSnippets
+            DevShelf
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             Your offline code library

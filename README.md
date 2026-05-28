@@ -1,6 +1,6 @@
-# DevSnippets AI
+# DevShelf
 
-DevSnippets AI is an Expo + React Native + TypeScript mobile app for saving, organizing, exporting, and reviewing reusable code snippets on-device. The app is built with an offline-first core: snippet CRUD, search, favorites, exports, and attachments use local storage.
+DevShelf is an Expo + React Native + TypeScript mobile app for saving, organizing, exporting, and reviewing reusable code snippets on-device. The app is built with an offline-first core: snippet CRUD, search, favorites, exports, and attachments use local storage.
 
 ## Tech Stack
 
@@ -227,4 +227,3 @@ npx tsc --noEmit
   - offline storage approach
   - file management implementation
   - AI integration workflow
-

@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Modal,
   PanResponder,
@@ -30,42 +30,31 @@ const MIN_EDITOR_FONT_SIZE = 10;
 const MAX_EDITOR_FONT_SIZE = 24;
 
 export default function SettingsScreen() {
-  const [theme, setTheme] = useState<AppTheme>("light");
   const [defaultLanguage, setDefaultLanguage] = useState("TypeScript");
   const [isLanguagePickerOpen, setIsLanguagePickerOpen] = useState(false);
   const [fontSize, setFontSize] = useState(14);
   const [fontSliderWidth, setFontSliderWidth] = useState(0);
-  const fontSizeRef = useRef(fontSize);
   const [apiKey, setApiKey] = useState("");
   const [hasSavedApiKey, setHasSavedApiKey] = useState(false);
   const {
     colors,
     colorScheme,
-    editorFontSize,
     setColorScheme,
     setEditorFontSize,
   } = useAppTheme();
   const { showAlert } = useAppAlert();
 
   useEffect(() => {
-    setTheme(colorScheme);
-  }, [colorScheme]);
-
-  useEffect(() => {
-    setFontSize(editorFontSize);
-    fontSizeRef.current = editorFontSize;
-  }, [editorFontSize]);
-
-  useEffect(() => {
     async function loadSettings() {
-      const storedLanguage = await getDefaultLanguage();
-      const storedFontSize = await getEditorFontSize();
-      const storedApiKey = await getAiApiKey();
+      const [storedLanguage, storedFontSize, storedApiKey] = await Promise.all([
+        getDefaultLanguage(),
+        getEditorFontSize(),
+        getAiApiKey(),
+      ]);
 
       setHasSavedApiKey(Boolean(storedApiKey));
       setDefaultLanguage(storedLanguage);
       setFontSize(storedFontSize);
-      fontSizeRef.current = storedFontSize;
     }
 
     loadSettings();
@@ -75,7 +64,7 @@ export default function SettingsScreen() {
     (fontSize - MIN_EDITOR_FONT_SIZE) /
     (MAX_EDITOR_FONT_SIZE - MIN_EDITOR_FONT_SIZE);
 
-  const updateFontSizeFromSlider = useCallback((positionX: number) => {
+  function updateFontSizeFromSlider(positionX: number) {
     if (fontSliderWidth <= 0) {
       return;
     }
@@ -87,29 +76,23 @@ export default function SettingsScreen() {
           (MAX_EDITOR_FONT_SIZE - MIN_EDITOR_FONT_SIZE),
     );
 
-    if (nextFontSize !== fontSizeRef.current) {
-      fontSizeRef.current = nextFontSize;
+    if (nextFontSize !== fontSize) {
       setFontSize(nextFontSize);
     }
-  }, [fontSliderWidth]);
+  }
 
-  const fontSizePanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => {
-          updateFontSizeFromSlider(event.nativeEvent.locationX);
-        },
-        onPanResponderMove: (event) => {
-          updateFontSizeFromSlider(event.nativeEvent.locationX);
-        },
-      }),
-    [updateFontSizeFromSlider],
-  );
+  const fontSizePanResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (event) => {
+      updateFontSizeFromSlider(event.nativeEvent.locationX);
+    },
+    onPanResponderMove: (event) => {
+      updateFontSizeFromSlider(event.nativeEvent.locationX);
+    },
+  });
 
   async function handleThemeChange(nextTheme: AppTheme) {
-    setTheme(nextTheme);
     await setColorScheme(nextTheme);
   }
 
@@ -175,7 +158,7 @@ export default function SettingsScreen() {
           <Pressable
             style={[
               styles.segmentButton,
-              theme === "light" && [
+              colorScheme === "light" && [
                 styles.segmentButtonActive,
                 { backgroundColor: colors.card },
               ],
@@ -186,7 +169,7 @@ export default function SettingsScreen() {
               style={[
                 styles.segmentText,
                 { color: colors.mutedForeground },
-                theme === "light" && { color: colors.foreground },
+                colorScheme === "light" && { color: colors.foreground },
               ]}
             >
               Light
@@ -196,7 +179,7 @@ export default function SettingsScreen() {
           <Pressable
             style={[
               styles.segmentButton,
-              theme === "dark" && [
+              colorScheme === "dark" && [
                 styles.segmentButtonActive,
                 { backgroundColor: colors.card },
               ],
@@ -207,7 +190,7 @@ export default function SettingsScreen() {
               style={[
                 styles.segmentText,
                 { color: colors.mutedForeground },
-                theme === "dark" && { color: colors.foreground },
+                colorScheme === "dark" && { color: colors.foreground },
               ]}
             >
               Dark

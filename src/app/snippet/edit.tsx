@@ -21,11 +21,14 @@
   export default function EditSnippetScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const snippetId = Number(id);
+    const [initialSnippet] = useState(() =>
+      Number.isFinite(snippetId) ? getSnippetById(snippetId) : null,
+    );
 
-    const [title, setTitle] = useState("");
-    const [language, setLanguage] = useState("");
-    const [tags, setTags] = useState("");
-    const [code, setCode] = useState("");
+    const [title, setTitle] = useState(initialSnippet?.title ?? "");
+    const [language, setLanguage] = useState(initialSnippet?.language ?? "");
+    const [tags, setTags] = useState(initialSnippet?.tags.join(", ") ?? "");
+    const [code, setCode] = useState(initialSnippet?.code ?? "");
     const { colors, editorFontSize, fonts } = useAppTheme();
     const { showAlert } = useAppAlert();
 
@@ -36,19 +39,11 @@
         return;
       }
 
-      const snippet = getSnippetById(snippetId);
-
-      if (!snippet) {
+      if (!initialSnippet) {
         showAlert("Not found", "This snippet does not exist.");
         router.back();
-        return;
       }
-
-      setTitle(snippet.title);
-      setLanguage(snippet.language);
-      setTags(snippet.tags.join(", "));
-      setCode(snippet.code);
-    }, [showAlert, snippetId]);
+    }, [initialSnippet, showAlert, snippetId]);
     
 
     function handleSave() {
@@ -67,8 +62,10 @@
         code: code.replace(/\r\n/g, "\n"),
         tags: tags
           .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
+          .flatMap((tag) => {
+            const trimmedTag = tag.trim();
+            return trimmedTag ? [trimmedTag] : [];
+          }),
       });
 
       router.back();

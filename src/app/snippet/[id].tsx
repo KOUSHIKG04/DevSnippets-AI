@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useAppAlert } from "../../components/AppAlert";
 import { SyntaxHighlightedCode } from "../../components/SyntaxHighlightedCode";
@@ -27,35 +27,47 @@ import { Snippet, SnippetAttachment } from "../../types/snippet";
 
 export default function SnippetDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const snippetId = useMemo(() => Number(id), [id]);
+  const snippetId = Number(id);
   const [snippet, setSnippet] = useState<Snippet | null>(() =>
     Number.isFinite(snippetId) ? getSnippetById(snippetId) : null,
   );
-  const [attachments, setAttachments] = useState<SnippetAttachment[]>([]);
+  const [attachments, setAttachments] = useState<SnippetAttachment[]>(() =>
+    Number.isFinite(snippetId) ? getSnippetAttachments(snippetId) : [],
+  );
   const { colors, editorFontSize, fonts } = useAppTheme();
   const { showAlert } = useAppAlert();
 
-  const loadSnippet = useCallback(() => {
+  function loadSnippet() {
     if (!Number.isFinite(snippetId)) {
-      setSnippet(null);
+      setSnippet((currentSnippet) => (currentSnippet === null ? currentSnippet : null));
+      setAttachments((currentAttachments) =>
+        currentAttachments.length === 0 ? currentAttachments : [],
+      );
       return;
     }
 
     const savedSnippet = getSnippetById(snippetId);
-    setSnippet(savedSnippet);
+    setSnippet((currentSnippet) =>
+      isSameSnippet(currentSnippet, savedSnippet) ? currentSnippet : savedSnippet,
+    );
 
     if (savedSnippet) {
-      setAttachments(getSnippetAttachments(savedSnippet.id));
+      const savedAttachments = getSnippetAttachments(savedSnippet.id);
+      setAttachments((currentAttachments) =>
+        areSameAttachments(currentAttachments, savedAttachments)
+          ? currentAttachments
+          : savedAttachments,
+      );
     } else {
-      setAttachments([]);
+      setAttachments((currentAttachments) =>
+        currentAttachments.length === 0 ? currentAttachments : [],
+      );
     }
-  }, [snippetId]);
+  }
 
-  useFocusEffect(
-    useCallback(() => {
-      loadSnippet();
-    }, [loadSnippet]),
-  );
+  useFocusEffect(() => {
+    loadSnippet();
+  });
 
   function handleToggleFavorite() {
     if (!snippet) return;
@@ -501,6 +513,43 @@ export default function SnippetDetailsScreen() {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function isSameSnippet(current: Snippet | null, next: Snippet | null) {
+  if (current === next) {
+    return true;
+  }
+
+  if (!current || !next) {
+    return false;
+  }
+
+  return (
+    current.id === next.id &&
+    current.title === next.title &&
+    current.language === next.language &&
+    current.code === next.code &&
+    current.isFavorite === next.isFavorite &&
+    current.createdAt === next.createdAt &&
+    current.updatedAt === next.updatedAt &&
+    current.tags.join("\u0000") === next.tags.join("\u0000")
+  );
+}
+
+function areSameAttachments(
+  current: SnippetAttachment[],
+  next: SnippetAttachment[],
+) {
+  return current.length === next.length && current.every((attachment, index) => {
+    const nextAttachment = next[index];
+
+    return (
+      attachment.id === nextAttachment.id &&
+      attachment.snippetId === nextAttachment.snippetId &&
+      attachment.uri === nextAttachment.uri &&
+      attachment.createdAt === nextAttachment.createdAt
+    );
+  });
 }
 
 function getExportContent(snippet: Snippet, format: SnippetExportFormat) {

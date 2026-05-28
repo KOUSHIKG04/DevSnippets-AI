@@ -48,8 +48,10 @@ import { router } from "expo-router";
 
       const tagList = tags
         .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
+        .flatMap((tag) => {
+          const trimmedTag = tag.trim();
+          return trimmedTag ? [trimmedTag] : [];
+        });
 
       createSnippet({
         title: trimmedTitle,

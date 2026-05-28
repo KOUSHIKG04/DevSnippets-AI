@@ -7,9 +7,8 @@ import * as SystemUI from "expo-system-ui";
 import {
   createContext,
   PropsWithChildren,
-  useContext,
+  use,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import {
@@ -140,8 +139,10 @@ export function AppThemeProvider({ children }: PropsWithChildren) {
     let isMounted = true;
 
     async function loadTheme() {
-      const storedTheme = await getTheme();
-      const storedEditorFontSize = await getEditorFontSize();
+      const [storedTheme, storedEditorFontSize] = await Promise.all([
+        getTheme(),
+        getEditorFontSize(),
+      ]);
 
       if (isMounted) {
         setColorSchemeState(storedTheme);
@@ -163,42 +164,37 @@ export function AppThemeProvider({ children }: PropsWithChildren) {
     SystemUI.setBackgroundColorAsync(colors.background);
   }, [colors.background]);
 
-  const navigationTheme = useMemo(
-    () => ({
-      ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
-      colors: {
-        ...(colorScheme === "dark" ? DarkTheme : DefaultTheme).colors,
-        background: colors.background,
-        card: colors.card,
-        primary: colors.primary,
-        text: colors.foreground,
-        border: colors.border,
-        notification: colors.primary,
-      },
-    }),
-    [colorScheme, colors],
-  );
+  const baseNavigationTheme = colorScheme === "dark" ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...baseNavigationTheme,
+    colors: {
+      ...baseNavigationTheme.colors,
+      background: colors.background,
+      card: colors.card,
+      primary: colors.primary,
+      text: colors.foreground,
+      border: colors.border,
+      notification: colors.primary,
+    },
+  };
 
-  const value = useMemo<AppThemeContextValue>(
-    () => ({
-      colors,
-      colorScheme,
-      fonts: {
-        mono: "GeistMono_400Regular",
-      },
-      editorFontSize,
-      isReady,
-      setColorScheme: async (theme: AppTheme) => {
-        setColorSchemeState(theme);
-        await saveTheme(theme);
-      },
-      setEditorFontSize: async (size: number) => {
-        setEditorFontSizeState(size);
-        await saveEditorFontSize(size);
-      },
-    }),
-    [colorScheme, colors, editorFontSize, isReady],
-  );
+  const value: AppThemeContextValue = {
+    colors,
+    colorScheme,
+    fonts: {
+      mono: "GeistMono_400Regular",
+    },
+    editorFontSize,
+    isReady,
+    setColorScheme: async (theme: AppTheme) => {
+      setColorSchemeState(theme);
+      await saveTheme(theme);
+    },
+    setEditorFontSize: async (size: number) => {
+      setEditorFontSizeState(size);
+      await saveEditorFontSize(size);
+    },
+  };
 
   return (
     <AppThemeContext.Provider value={value}>
@@ -210,7 +206,7 @@ export function AppThemeProvider({ children }: PropsWithChildren) {
 }
 
 export function useAppTheme() {
-  const value = useContext(AppThemeContext);
+  const value = use(AppThemeContext);
 
   if (!value) {
     throw new Error("useAppTheme must be used inside AppThemeProvider");

@@ -1,8 +1,7 @@
 import {
   createContext,
   PropsWithChildren,
-  useContext,
-  useMemo,
+  use,
   useState,
 } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -35,18 +34,15 @@ export function AppAlertProvider({ children }: PropsWithChildren) {
   const [alertState, setAlertState] = useState<AlertState | null>(null);
   const { colors } = useAppTheme();
 
-  const value = useMemo<AppAlertContextValue>(
-    () => ({
-      showAlert: (title, message, actions) => {
-        setAlertState({
-          title,
-          message,
-          actions: actions?.length ? actions : [{ label: "OK" }],
-        });
-      },
-    }),
-    [],
-  );
+  const value: AppAlertContextValue = {
+    showAlert: (title, message, actions) => {
+      setAlertState({
+        title,
+        message,
+        actions: actions?.length ? actions : [{ label: "OK" }],
+      });
+    },
+  };
 
   function handleActionPress(action: AlertAction) {
     setAlertState(null);
@@ -123,7 +119,7 @@ export function AppAlertProvider({ children }: PropsWithChildren) {
 }
 
 export function useAppAlert() {
-  const value = useContext(AppAlertContext);
+  const value = use(AppAlertContext);
 
   if (!value) {
     throw new Error("useAppAlert must be used inside AppAlertProvider");

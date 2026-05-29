@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -12,6 +12,16 @@ import {
   Text,
   View,
 } from "react-native";
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import {
   AiInsightKind,
   generateSnippetInsight,
@@ -35,6 +45,7 @@ import {
   type SnippetExportFormat,
 } from "../../files/fileService";
 import { fontStyles } from "../../fontDefaults";
+import { getAiApiKey } from "../../storage/secureStore";
 import { useAppTheme } from "../../theme";
 import { Snippet, SnippetAttachment } from "../../types/snippet";
 
@@ -52,6 +63,8 @@ type DetailUiState = {
   activeExportMenu: "export" | "share" | null;
   aiInsight: string;
   aiInsightKind: AiInsightKind | null;
+  isAiMenuOpen: boolean;
+  isAiWindowOpen: boolean;
   isGeneratingInsight: boolean;
   selectedAttachment: SnippetAttachment | null;
 };
@@ -60,6 +73,8 @@ type DetailUiAction =
   | { kind: AiInsightKind; type: "startInsight" }
   | { text: string; type: "finishInsight" }
   | { type: "finishInsightWithError" }
+  | { type: "closeAiWindow" }
+  | { type: "toggleAiMenu" }
   | { attachment: SnippetAttachment | null; type: "selectAttachment" }
   | { menu: "export" | "share" | null; type: "setExportMenu" };
 
@@ -67,6 +82,8 @@ const initialDetailUiState: DetailUiState = {
   activeExportMenu: null,
   aiInsight: "",
   aiInsightKind: null,
+  isAiMenuOpen: false,
+  isAiWindowOpen: false,
   isGeneratingInsight: false,
   selectedAttachment: null,
 };
@@ -80,6 +97,8 @@ function detailUiReducer(
       return {
         ...state,
         aiInsightKind: action.kind,
+        isAiMenuOpen: false,
+        isAiWindowOpen: true,
         isGeneratingInsight: true,
       };
     case "finishInsight":
@@ -90,6 +109,10 @@ function detailUiReducer(
       };
     case "finishInsightWithError":
       return { ...state, isGeneratingInsight: false };
+    case "closeAiWindow":
+      return { ...state, isAiWindowOpen: false, isAiMenuOpen: false };
+    case "toggleAiMenu":
+      return { ...state, isAiMenuOpen: !state.isAiMenuOpen };
     case "selectAttachment":
       return { ...state, selectedAttachment: action.attachment };
     case "setExportMenu":
@@ -112,6 +135,7 @@ export default function SnippetDetailsScreen() {
     detailUiReducer,
     initialDetailUiState,
   );
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
   const { colors } = useAppTheme();
   const { showAlert } = useAppAlert();
 
@@ -266,14 +290,27 @@ export default function SnippetDetailsScreen() {
     }
   }
 
-  async function handleDeleteAttachment(attachment: SnippetAttachment) {
-    try {
-      deleteSnippetAttachment(attachment.id);
-      await deleteFile(attachment.uri);
-      setAttachments(getSnippetAttachments(attachment.snippetId));
-    } catch {
-      showAlert("Delete failed", "Could not delete this attachment.");
-    }
+  function handleDeleteAttachment(attachment: SnippetAttachment) {
+    showAlert(
+      "Delete attachment",
+      "This screenshot attachment will be permanently deleted.",
+      [
+        { label: "Cancel", variant: "cancel" },
+        {
+          label: "Delete",
+          variant: "destructive",
+          onPress: async () => {
+            try {
+              deleteSnippetAttachment(attachment.id);
+              await deleteFile(attachment.uri);
+              setAttachments(getSnippetAttachments(attachment.snippetId));
+            } catch {
+              showAlert("Delete failed", "Could not delete this attachment.");
+            }
+          },
+        },
+      ],
+    );
   }
 
   async function handleShareAttachment(attachment: SnippetAttachment) {
@@ -286,6 +323,14 @@ export default function SnippetDetailsScreen() {
 
   async function handleGenerateInsight(kind: AiInsightKind) {
     if (!snippet) return;
+
+    const apiKey = await getAiApiKey();
+
+    if (!apiKey?.trim()) {
+      dispatchUi({ type: "closeAiWindow" });
+      showAlert("AI setup needed", "Add your Gemini API key in Settings first.");
+      return;
+    }
 
     dispatchUi({ kind, type: "startInsight" });
 
@@ -305,48 +350,61 @@ export default function SnippetDetailsScreen() {
     }
   }
 
+  function handleScroll(offsetY: number) {
+    const shouldMoveToTop = offsetY > 60;
+
+    setIsScrolledDown((currentValue) =>
+      currentValue === shouldMoveToTop ? currentValue : shouldMoveToTop,
+    );
+  }
+
   return (
-    <ScrollView
-      style={[styles.screen, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.container}
-    >
-      <SnippetDetailHeader
-        snippet={snippet}
-        onBack={() => router.back()}
-        onToggleFavorite={handleToggleFavorite}
-      />
-      <SnippetTagList tags={snippet.tags} />
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.container}
+        onScroll={(event) => handleScroll(event.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={16}
+      >
+        <SnippetDetailHeader
+          snippet={snippet}
+          onBack={() => router.back()}
+          onToggleFavorite={handleToggleFavorite}
+        />
+        <SnippetTagList tags={snippet.tags} />
+        <SnippetCodeSection snippet={snippet} />
+        <SnippetAttachmentsSection
+          attachments={attachments}
+          onAttach={handleAttachScreenshot}
+          onDeleteAttachment={handleDeleteAttachment}
+          onPreviewAttachment={(attachment) =>
+            dispatchUi({ attachment, type: "selectAttachment" })
+          }
+        />
+        <SnippetDetailActions snippet={snippet} onDelete={handleDelete} />
+        <SnippetExportControls
+          onOpenExport={() =>
+            dispatchUi({ menu: "export", type: "setExportMenu" })
+          }
+          onOpenShare={() =>
+            dispatchUi({ menu: "share", type: "setExportMenu" })
+          }
+        />
+        <SnippetMeta snippet={snippet} />
+      </ScrollView>
 
-      <SnippetCodeSection snippet={snippet} />
-
-      <SnippetAiSection
+      <FloatingAiAssistant
+        isAtTop={isScrolledDown}
         uiState={uiState}
+        onCloseWindow={() => dispatchUi({ type: "closeAiWindow" })}
         onGenerateInsight={handleGenerateInsight}
+        onToggleMenu={() => dispatchUi({ type: "toggleAiMenu" })}
       />
-
-      <SnippetAttachmentsSection
-        attachments={attachments}
-        onAttach={handleAttachScreenshot}
-        onDeleteAttachment={handleDeleteAttachment}
-        onPreviewAttachment={(attachment) =>
-          dispatchUi({ attachment, type: "selectAttachment" })
-        }
-      />
-
-      <SnippetDetailActions snippet={snippet} onDelete={handleDelete} />
-      <SnippetExportControls
-        onOpenExport={() =>
-          dispatchUi({ menu: "export", type: "setExportMenu" })
-        }
-        onOpenShare={() =>
-          dispatchUi({ menu: "share", type: "setExportMenu" })
-        }
-      />
-      <SnippetMeta snippet={snippet} />
-
       <AttachmentPreviewModal
         attachment={uiState.selectedAttachment}
-        onClose={() => dispatchUi({ attachment: null, type: "selectAttachment" })}
+        onClose={() =>
+          dispatchUi({ attachment: null, type: "selectAttachment" })
+        }
         onShare={handleShareAttachment}
       />
       <ExportFormatModal
@@ -355,7 +413,7 @@ export default function SnippetDetailsScreen() {
         onExport={handleExport}
         onShare={handleShare}
       />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -386,13 +444,7 @@ function SnippetDetailHeader({
     <View style={styles.header}>
       <View style={styles.titleArea}>
         <View style={styles.headerTitleRow}>
-          <Pressable
-            style={[
-              styles.backButton,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-            onPress={onBack}
-          >
+          <Pressable style={styles.backButton} onPress={onBack}>
             <Ionicons name="arrow-back" size={24} color={colors.foreground} />
           </Pressable>
           <Text style={[styles.title, { color: colors.foreground }]}>
@@ -475,49 +527,99 @@ function SnippetCodeSection({ snippet }: { snippet: Snippet }) {
   );
 }
 
-function SnippetAiSection({
+function FloatingAiAssistant({
+  isAtTop,
+  onCloseWindow,
   onGenerateInsight,
+  onToggleMenu,
   uiState,
 }: {
+  isAtTop: boolean;
+  onCloseWindow: () => void;
   onGenerateInsight: (kind: AiInsightKind) => void;
+  onToggleMenu: () => void;
   uiState: DetailUiState;
 }) {
   const { colors, fonts } = useAppTheme();
+  const pulseProgress = useSharedValue(0);
+  const verticalOffset = useSharedValue(0);
+  const shouldShowWindow = uiState.isAiWindowOpen;
+
+  useEffect(() => {
+    pulseProgress.set(withRepeat(
+      withSequence(
+        withTiming(1, {
+          duration: 1500,
+          easing: Easing.out(Easing.cubic),
+        }),
+        withTiming(0, { duration: 0 }),
+      ),
+      -1,
+    ));
+
+    return () => {
+      pulseProgress.set(0);
+    };
+  }, [pulseProgress]);
+
+  useEffect(() => {
+    verticalOffset.set(
+      withSpring(isAtTop ? -470 : 0, {
+        damping: 20,
+        stiffness: 160,
+      }),
+    );
+  }, [isAtTop, verticalOffset]);
+
+  const pulseAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pulseProgress.get(), [0, 0.75, 1], [0.35, 0.12, 0]),
+    transform: [
+      {
+        scale: interpolate(pulseProgress.get(), [0, 1], [1, 1.65]),
+      },
+    ],
+  }));
+  const layerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: verticalOffset.get() }],
+  }));
 
   return (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        AI
-      </Text>
-      <View style={styles.aiActions}>
-        {(["explain", "summarize", "improve"] as AiInsightKind[]).map(
-          (kind) => (
-            <Pressable
-              key={kind}
-              disabled={uiState.isGeneratingInsight}
-              style={[styles.aiButton, { backgroundColor: colors.secondary }]}
-              onPress={() => onGenerateInsight(kind)}
-            >
-              <Text style={[styles.aiButtonText, { color: colors.foreground }]}>
-                {getInsightActionLabel(kind)}
-              </Text>
-            </Pressable>
-          ),
-        )}
-      </View>
-
-      {(uiState.isGeneratingInsight || uiState.aiInsight) && (
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        styles.floatingAiLayer,
+        layerAnimatedStyle,
+      ]}
+    >
+      {shouldShowWindow && (
         <View
           style={[
-            styles.aiPanel,
+            styles.floatingAiPanel,
+            isAtTop ? styles.floatingAiPanelBelow : styles.floatingAiPanelAbove,
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <Text style={[styles.aiPanelTitle, { color: colors.foreground }]}>
-            {uiState.aiInsightKind
-              ? getInsightTitle(uiState.aiInsightKind)
-              : "AI response"}
-          </Text>
+          <View style={styles.floatingAiPanelHeader}>
+            <View style={styles.floatingAiPanelTitleBlock}>
+              <Text
+                style={[styles.aiPanelTitle, { color: colors.foreground }]}
+              >
+                {uiState.aiInsightKind
+                  ? getInsightTitle(uiState.aiInsightKind)
+                  : "AI response"}
+              </Text>
+            </View>
+            <Pressable
+              style={[
+                styles.floatingAiClose,
+                { backgroundColor: colors.secondary },
+              ]}
+              onPress={onCloseWindow}
+            >
+              <Ionicons name="close" size={18} color={colors.foreground} />
+            </Pressable>
+          </View>
+
           {uiState.isGeneratingInsight ? (
             <View style={styles.aiLoading}>
               <ActivityIndicator color={colors.primary} />
@@ -531,15 +633,85 @@ function SnippetAiSection({
               </Text>
             </View>
           ) : (
-            <AiFormattedText
-              text={uiState.aiInsight}
-              colors={colors}
-              monoFontFamily={fonts.mono}
-            />
+            <ScrollView
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              style={styles.floatingAiResponse}
+              contentContainerStyle={styles.floatingAiResponseContent}
+            >
+              <AiFormattedText
+                text={uiState.aiInsight}
+                colors={colors}
+                monoFontFamily={fonts.mono}
+              />
+            </ScrollView>
           )}
         </View>
       )}
-    </View>
+
+      {uiState.isAiMenuOpen && (
+        <View
+          style={[
+            styles.floatingAiMenu,
+            isAtTop ? styles.floatingAiMenuBelow : styles.floatingAiMenuAbove,
+          ]}
+        >
+        {(["explain", "summarize", "improve"] as AiInsightKind[]).map(
+          (kind) => (
+            <Pressable
+              key={kind}
+              disabled={uiState.isGeneratingInsight}
+              style={[
+                styles.floatingAiMenuItem,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+              onPress={() => onGenerateInsight(kind)}
+            >
+              <Text
+                style={[
+                  styles.floatingAiMenuText,
+                  { color: colors.foreground },
+                ]}
+              >
+                {getInsightActionLabel(kind)}
+              </Text>
+              <Ionicons
+                name="sparkles-outline"
+                size={16}
+                color={colors.codeAccent}
+              />
+            </Pressable>
+          ),
+        )}
+        </View>
+      )}
+
+      <View style={styles.floatingAiButtonWrap}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.floatingAiPulse,
+            {
+              backgroundColor: colors.primary,
+            },
+            pulseAnimatedStyle,
+          ]}
+        />
+        <Pressable
+          style={[styles.floatingAiButton, { backgroundColor: colors.primary }]}
+          onPress={onToggleMenu}
+        >
+          <Text
+            style={[
+              styles.floatingAiButtonText,
+              { color: colors.primaryForeground },
+            ]}
+          >
+            AI
+          </Text>
+        </Pressable>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -1016,8 +1188,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: -6,
@@ -1120,6 +1290,107 @@ const styles = StyleSheet.create({
   aiLoadingText: {
     ...fontStyles.regular,
     fontSize: 13,
+  },
+  floatingAiLayer: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 108,
+    alignItems: "flex-end",
+    gap: 10,
+    zIndex: 10,
+  },
+  floatingAiButton: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.22)",
+  },
+  floatingAiButtonText: {
+    ...fontStyles.extraBold,
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  floatingAiButtonWrap: {
+    width: 66,
+    height: 66,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  floatingAiPulse: {
+    position: "absolute",
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+  },
+  floatingAiMenu: {
+    position: "absolute",
+    right: 0,
+    gap: 8,
+  },
+  floatingAiMenuAbove: {
+    bottom: 74,
+  },
+  floatingAiMenuBelow: {
+    top: 74,
+  },
+  floatingAiMenuItem: {
+    minWidth: 150,
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    boxShadow: "0px 5px 12px rgba(0, 0, 0, 0.16)",
+  },
+  floatingAiMenuText: {
+    ...fontStyles.extraBold,
+    fontSize: 12,
+  },
+  floatingAiPanel: {
+    position: "absolute",
+    right: 0,
+    width: "100%",
+    maxWidth: 370,
+    maxHeight: 540,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 14,
+    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.22)",
+  },
+  floatingAiPanelAbove: {
+    bottom: 74,
+  },
+  floatingAiPanelBelow: {
+    top: 74,
+  },
+  floatingAiPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 10,
+  },
+  floatingAiPanelTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  floatingAiClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  floatingAiResponse: {
+    height: 452,
+  },
+  floatingAiResponseContent: {
+    paddingBottom: 12,
   },
   attachmentRow: {
     flexDirection: "row",

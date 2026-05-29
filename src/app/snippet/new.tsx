@@ -90,10 +90,7 @@ import { router, useLocalSearchParams } from "expo-router";
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
               <Pressable
-                style={[
-                  styles.backButton,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                ]}
+                style={styles.backButton}
                 onPress={() => router.back()}
               >
                 <Ionicons
@@ -335,8 +332,6 @@ import { router, useLocalSearchParams } from "expo-router";
       width: 40,
       height: 40,
       padding: 8,
-      borderRadius: 8,
-      borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
       marginLeft: -6,

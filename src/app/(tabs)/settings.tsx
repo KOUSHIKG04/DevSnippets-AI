@@ -181,10 +181,23 @@ export default function SettingsScreen() {
     showAlert("Saved", "Preferences saved locally.");
   }
 
-  async function handleDeleteApiKey() {
-    await deleteAiApiKey();
-    dispatchSettings({ type: "deleteApiKey" });
-    showAlert("Removed", "Gemini API key was removed from this device.");
+  function handleDeleteApiKey() {
+    showAlert(
+      "Remove Gemini key",
+      "The saved Gemini API key will be removed from this device.",
+      [
+        { label: "Cancel", variant: "cancel" },
+        {
+          label: "Remove",
+          variant: "destructive",
+          onPress: async () => {
+            await deleteAiApiKey();
+            dispatchSettings({ type: "deleteApiKey" });
+            showAlert("Removed", "Gemini API key was removed from this device.");
+          },
+        },
+      ],
+    );
   }
 
   function handleSelectLanguage(language: string) {
@@ -263,10 +276,7 @@ function SettingsHeader() {
       <View>
         <View style={styles.headerTitleRow}>
           <Pressable
-            style={[
-              styles.backButton,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
+            style={styles.backButton}
             onPress={() => router.back()}
           >
             <Ionicons name="arrow-back" size={24} color={colors.foreground} />
@@ -599,8 +609,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: -6,

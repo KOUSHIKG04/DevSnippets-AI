@@ -63,10 +63,7 @@ export default function FavoritesScreen() {
         <View>
           <View style={styles.headerTitleRow}>
             <Pressable
-              style={[
-                styles.backButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
+              style={styles.backButton}
               onPress={() => router.back()}
             >
               <Ionicons
@@ -164,8 +161,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: -6,

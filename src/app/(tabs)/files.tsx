@@ -68,46 +68,111 @@ const templatePresets: TemplatePreset[] = [
 
 const fileFolders: FileFolder[] = ["exports", "attachments", "templates"];
 
+const initialFilesByFolder: Record<FileFolder, LocalFile[]> = {
+  exports: [],
+  attachments: [],
+  templates: [],
+};
+
 export default function FilesScreen() {
   const { colors } = useAppTheme();
   const { showAlert } = useAppAlert();
 
   const [activeFolder, setActiveFolder] = useState<FileFolder>("exports");
-  const [files, setFiles] = useState<LocalFile[]>([]);
+  const [filesByFolder, setFilesByFolder] =
+    useState<Record<FileFolder, LocalFile[]>>(initialFilesByFolder);
+  const files = filesByFolder[activeFolder];
 
-  async function loadFiles() {
-    try {
-      const storedFiles = await listFiles(folders[activeFolder]);
-      const mappedFiles = storedFiles.map((name) => ({
-        name,
-        folder: activeFolder,
-        uri: `${folders[activeFolder]}${name}`,
-      }));
-      setFiles(mappedFiles);
-    } catch {
-      showAlert("Files error", "Could not load saved files.");
+  function loadFiles(
+    folder: FileFolder = activeFolder,
+    options?: { shouldApply?: () => boolean },
+  ) {
+    if (options?.shouldApply?.() === false) {
+      return Promise.resolve();
     }
+
+    return listFiles(folders[folder])
+      .then((storedFiles) => {
+        const mappedFiles = storedFiles.map((name) => ({
+          name,
+          folder,
+          uri: `${folders[folder]}${name}`,
+        }));
+
+        if (options?.shouldApply?.() === false) {
+          return;
+        }
+
+        setFilesByFolder((currentFilesByFolder) => {
+          const currentFiles = currentFilesByFolder[folder];
+
+          if (areSameFiles(currentFiles, mappedFiles)) {
+            return currentFilesByFolder;
+          }
+
+          return {
+            ...currentFilesByFolder,
+            [folder]: mappedFiles,
+          };
+        });
+      })
+      .catch(() => {
+        showAlert("Files error", "Could not load saved files.");
+      });
   }
 
   useFocusEffect(() => {
-    loadFiles();
+    let isActive = true;
+
+    loadFiles(activeFolder, { shouldApply: () => isActive });
+
+    return () => {
+      isActive = false;
+    };
   });
 
-  function getTargetFolder(folder: FileFolder): FileFolder {
+  function handleSelectFolder(folder: FileFolder) {
+    setActiveFolder(folder);
+    loadFiles(folder);
+  }
+
+  function getTargetFolder(folder: FileFolder): FileFolder | null {
+    if (folder === "attachments") {
+      return null;
+    }
+
     return folder === "templates" ? "exports" : "templates";
   }
 
-  async function handleDelete(file: LocalFile) {
-    try {
-      await deleteFile(file.uri);
-      await loadFiles();
-    } catch {
-      showAlert("Delete failed", "Could not delete this file.");
-    }
+  function handleDelete(file: LocalFile) {
+    showAlert(
+      "Delete file",
+      `"${file.name}" will be permanently deleted from ${folderLabels[file.folder]}.`,
+      [
+        { label: "Cancel", variant: "cancel" },
+        {
+          label: "Delete",
+          variant: "destructive",
+          onPress: async () => {
+            try {
+              await deleteFile(file.uri);
+              await loadFiles(file.folder);
+            } catch {
+              showAlert("Delete failed", "Could not delete this file.");
+            }
+          },
+        },
+      ],
+    );
   }
 
   async function handleCopy(file: LocalFile) {
     const targetFolder = getTargetFolder(file.folder);
+
+    if (!targetFolder) {
+      showAlert("Not available", "Attachments cannot be saved as templates.");
+      return;
+    }
 
     try {
       await copyFile(file.uri, `${folders[targetFolder]}${file.name}`);
@@ -120,9 +185,14 @@ export default function FilesScreen() {
   async function handleMove(file: LocalFile) {
     const targetFolder = getTargetFolder(file.folder);
 
+    if (!targetFolder) {
+      showAlert("Not available", "Attachments cannot be moved to templates.");
+      return;
+    }
+
     try {
       await moveFile(file.uri, `${folders[targetFolder]}${file.name}`);
-      await loadFiles();
+      await loadFiles(file.folder);
       showAlert("Moved", `Moved to ${folderLabels[targetFolder]}.`);
     } catch {
       showAlert("Move failed", "Could not move this file.");
@@ -132,7 +202,7 @@ export default function FilesScreen() {
   async function handleSaveTemplate(template: TemplatePreset) {
     try {
       await writeTextFile(`${TEMPLATES_DIR}${template.name}`, template.content);
-      await loadFiles();
+      await loadFiles("templates");
       showAlert("Saved", "Template saved locally.");
     } catch {
       showAlert("Save failed", "Could not save this template.");
@@ -155,177 +225,247 @@ export default function FilesScreen() {
     const targetFolder = getTargetFolder(item.folder);
 
     return (
-      <View
-        style={[
-          styles.fileRow,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
-        <View style={styles.fileInfo}>
-          <Text style={[styles.fileName, { color: colors.foreground }]}>
-            {item.name}
-          </Text>
-          <Text style={[styles.fileUri, { color: colors.mutedForeground }]}>
-            {folderLabels[item.folder]} / {item.name}
-          </Text>
-
-          <View style={styles.fileActions}>
-            {item.folder === "templates" && (
-              <ActionButton
-                icon="code-slash"
-                label="Use"
-                onPress={() => handleUseTemplate(item)}
-              />
-            )}
-            <ActionButton
-              icon="copy-outline"
-              label={`Copy to ${folderLabels[targetFolder]}`}
-              onPress={() => handleCopy(item)}
-            />
-            <ActionButton
-              icon="swap-horizontal-outline"
-              label={`Move to ${folderLabels[targetFolder]}`}
-              onPress={() => handleMove(item)}
-            />
-            <ActionButton
-              destructive
-              icon="trash-outline"
-              label="Delete"
-              onPress={() => handleDelete(item)}
-            />
-          </View>
-        </View>
-      </View>
+      <FileRow
+        file={item}
+        targetFolder={targetFolder}
+        onCopy={handleCopy}
+        onDelete={handleDelete}
+        onMove={handleMove}
+        onUseTemplate={handleUseTemplate}
+      />
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.headerTitleRow}>
-        <Pressable
-          style={[
-            styles.backButton,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.foreground }]}>Files</Text>
-      </View>
-      <View
-        style={[
-          styles.folderTabs,
-          { backgroundColor: colors.secondary, borderColor: colors.border },
-        ]}
-      >
-        {fileFolders.map((folder) => {
-          const isActive = activeFolder === folder;
-
-          return (
-            <Pressable
-              key={folder}
-              style={[
-                styles.folderTab,
-                isActive && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setActiveFolder(folder)}
-            >
-              <Text
-                style={[
-                  styles.folderTabText,
-                  {
-                    color: isActive
-                      ? colors.primaryForeground
-                      : colors.mutedForeground,
-                  },
-                ]}
-              >
-                {folderLabels[folder]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <FilesHeader />
+      <FolderTabs
+        activeFolder={activeFolder}
+        onSelectFolder={handleSelectFolder}
+      />
 
       <FlatList
+        key={activeFolder}
         data={files}
         keyExtractor={(item) => item.uri}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           activeFolder === "templates" ? (
-            <View style={styles.templatePanel}>
-              <Text style={[styles.panelTitle, { color: colors.foreground }]}>
-                Save starter templates
-              </Text>
-              <View style={styles.templateGrid}>
-                {templatePresets.map((template) => (
-                  <Pressable
-                    key={template.name}
-                    style={[
-                      styles.templateButton,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    onPress={() => handleSaveTemplate(template)}
-                  >
-                    <Ionicons
-                      style={[
-                        styles.templateIcon,
-                        {
-                          backgroundColor: colors.secondary,
-                        },
-                      ]}
-                      name="download-outline"
-                      size={20}
-                      color={colors.codeAccent}
-                    />
-                    <View style={styles.templateInfo}>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.templateText,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        {template.name}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.templateMeta,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        Save to Templates
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={20}
-                      color={colors.mutedForeground}
-                    />
-                  </Pressable>
-                ))}
-              </View>
-            </View>
+            <TemplatePanel onSaveTemplate={handleSaveTemplate} />
           ) : null
         }
         ListEmptyComponent={
           activeFolder === "templates" ? null : (
-            <View style={styles.emptyState}>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No {folderLabels[activeFolder].toLowerCase()} yet
-            </Text>
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Files saved here stay available offline.
-            </Text>
-            </View>
+            <EmptyFolderState folder={activeFolder} />
           )
         }
         renderItem={renderFile}
       />
+    </View>
+  );
+}
+
+function FilesHeader() {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.headerTitleRow}>
+      <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={24} color={colors.foreground} />
+      </Pressable>
+      <Text style={[styles.title, { color: colors.foreground }]}>Files</Text>
+    </View>
+  );
+}
+
+function FolderTabs({
+  activeFolder,
+  onSelectFolder,
+}: {
+  activeFolder: FileFolder;
+  onSelectFolder: (folder: FileFolder) => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View
+      style={[
+        styles.folderTabs,
+        { backgroundColor: colors.secondary, borderColor: colors.border },
+      ]}
+    >
+      {fileFolders.map((folder) => {
+        const isActive = activeFolder === folder;
+
+        return (
+          <Pressable
+            key={folder}
+            style={[
+              styles.folderTab,
+              isActive && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => onSelectFolder(folder)}
+          >
+            <Text
+              style={[
+                styles.folderTabText,
+                {
+                  color: isActive
+                    ? colors.primaryForeground
+                    : colors.mutedForeground,
+                },
+              ]}
+            >
+              {folderLabels[folder]}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function TemplatePanel({
+  onSaveTemplate,
+}: {
+  onSaveTemplate: (template: TemplatePreset) => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.templatePanel}>
+      <Text style={[styles.panelTitle, { color: colors.foreground }]}>
+        Save starter templates
+      </Text>
+      <View style={styles.templateGrid}>
+        {templatePresets.map((template) => (
+          <Pressable
+            key={template.name}
+            style={[
+              styles.templateButton,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+            onPress={() => onSaveTemplate(template)}
+          >
+            <Ionicons
+              style={[
+                styles.templateIcon,
+                {
+                  backgroundColor: colors.secondary,
+                },
+              ]}
+              name="download-outline"
+              size={20}
+              color={colors.codeAccent}
+            />
+            <View style={styles.templateInfo}>
+              <Text
+                numberOfLines={1}
+                style={[styles.templateText, { color: colors.foreground }]}
+              >
+                {template.name}
+              </Text>
+              <Text
+                style={[
+                  styles.templateMeta,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Save to Templates
+              </Text>
+            </View>
+            <Ionicons
+              name="add-circle-outline"
+              size={20}
+              color={colors.mutedForeground}
+            />
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function EmptyFolderState({ folder }: { folder: FileFolder }) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.emptyState}>
+      <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+        No {folderLabels[folder].toLowerCase()} yet
+      </Text>
+      <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+        Files saved here stay available offline.
+      </Text>
+    </View>
+  );
+}
+
+function FileRow({
+  file,
+  onCopy,
+  onDelete,
+  onMove,
+  onUseTemplate,
+  targetFolder,
+}: {
+  file: LocalFile;
+  onCopy: (file: LocalFile) => void;
+  onDelete: (file: LocalFile) => void;
+  onMove: (file: LocalFile) => void;
+  onUseTemplate: (file: LocalFile) => void;
+  targetFolder: FileFolder | null;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View
+      style={[
+        styles.fileRow,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.fileInfo}>
+        <Text style={[styles.fileName, { color: colors.foreground }]}>
+          {file.name}
+        </Text>
+        <Text style={[styles.fileUri, { color: colors.mutedForeground }]}>
+          {folderLabels[file.folder]} / {file.name}
+        </Text>
+
+        <View style={styles.fileActions}>
+          {file.folder === "templates" && (
+            <ActionButton
+              icon="code-slash"
+              label="Use"
+              onPress={() => onUseTemplate(file)}
+            />
+          )}
+          {targetFolder && (
+            <>
+              <ActionButton
+                icon="copy-outline"
+                label={`Copy to ${folderLabels[targetFolder]}`}
+                onPress={() => onCopy(file)}
+              />
+              <ActionButton
+                icon="swap-horizontal-outline"
+                label={`Move to ${folderLabels[targetFolder]}`}
+                onPress={() => onMove(file)}
+              />
+            </>
+          )}
+          <ActionButton
+            destructive
+            icon="trash-outline"
+            label="Delete"
+            onPress={() => onDelete(file)}
+          />
+        </View>
+      </View>
     </View>
   );
 }
@@ -374,6 +514,21 @@ function ActionButton({
   );
 }
 
+function areSameFiles(currentFiles: LocalFile[], nextFiles: LocalFile[]) {
+  return (
+    currentFiles.length === nextFiles.length &&
+    currentFiles.every((file, index) => {
+      const nextFile = nextFiles[index];
+
+      return (
+        file.folder === nextFile.folder &&
+        file.name === nextFile.name &&
+        file.uri === nextFile.uri
+      );
+    })
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -394,8 +549,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: -6,

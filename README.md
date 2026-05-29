@@ -56,6 +56,37 @@ src/
 
 Non-route code lives outside `src/app` so Expo Router does not treat utilities as screens.
 
+## Component Workflow Chart
+
+```mermaid
+flowchart TD
+  A[App Root Layout] --> B[AppThemeProvider]
+  B --> C[AppAlertProvider]
+  C --> D[Expo Router Stack]
+  D --> E[Tabs Layout]
+  E --> F[Home Screen]
+  E --> G[Favorites Screen]
+  E --> H[Files Screen]
+  E --> I[Settings Screen]
+  D --> J[Snippet Screens]
+  F --> K[HomeHeader]
+  F --> L[HomeHero]
+  F --> M[HomeSearchField]
+  F --> N[HomeSnippetRow]
+  G --> O[SnippetCard]
+  H --> P[FilesHeader]
+  H --> Q[FolderTabs]
+  H --> R[TemplatePanel]
+  H --> S[FileRow]
+  I --> T[Settings Cards]
+  J --> U[Snippet Form]
+  J --> V[Snippet Details Header]
+  J --> W[SyntaxHighlightedCode]
+  J --> X[Attachment Preview Modal]
+  J --> Y[Floating AI Assistant]
+  C --> Z[Shared App Alert Modal]
+```
+
 ## Database Structure
 
 SQLite database: `devsnippets.db`
@@ -204,6 +235,29 @@ Improve prompt behavior:
 - Reviews the exact snippet only.
 - Returns bugs/risks, readability improvements, performance/edge cases, and an improved code example only when useful.
 
+## AI Workflow Chart
+
+```mermaid
+flowchart TD
+  A[Snippet Details Screen] --> B[User taps floating AI button]
+  B --> C{Gemini API key saved?}
+  C -- No --> D[Show setup alert]
+  C -- Yes --> E[Show AI action menu]
+  E --> F{Selected action}
+  F --> G[Explain snippet]
+  F --> H[Summarize snippet]
+  F --> I[Suggest improvements]
+  G --> J[Build prompt with title, language, tags, and code]
+  H --> J
+  I --> J
+  J --> K[Read Gemini key from SecureStore]
+  K --> L[Send request to Gemini API]
+  L --> M{Request successful?}
+  M -- No --> N[Show error alert for bad key, no internet, quota, or server issue]
+  M -- Yes --> O[Parse Gemini text response]
+  O --> P[Render formatted response in floating AI window]
+```
+
 ## Export And Sharing
 
 Snippet detail supports:
@@ -249,58 +303,3 @@ Run React Doctor:
 ```bash
 npx react-doctor@latest --verbose --diff
 ```
-
-## AI Workflow Chart
-
-```mermaid
-flowchart TD
-  A[Snippet Details Screen] --> B[User taps floating AI button]
-  B --> C{Gemini API key saved?}
-  C -- No --> D[Show setup alert]
-  C -- Yes --> E[Show AI action menu]
-  E --> F{Selected action}
-  F --> G[Explain snippet]
-  F --> H[Summarize snippet]
-  F --> I[Suggest improvements]
-  G --> J[Build prompt with title, language, tags, and code]
-  H --> J
-  I --> J
-  J --> K[Read Gemini key from SecureStore]
-  K --> L[Send request to Gemini API]
-  L --> M{Request successful?}
-  M -- No --> N[Show error alert for bad key, no internet, quota, or server issue]
-  M -- Yes --> O[Parse Gemini text response]
-  O --> P[Render formatted response in floating AI window]
-```
-
-## Component Workflow Chart
-
-```mermaid
-flowchart TD
-  A[App Root Layout] --> B[AppThemeProvider]
-  B --> C[AppAlertProvider]
-  C --> D[Expo Router Stack]
-  D --> E[Tabs Layout]
-  E --> F[Home Screen]
-  E --> G[Favorites Screen]
-  E --> H[Files Screen]
-  E --> I[Settings Screen]
-  D --> J[Snippet Screens]
-  F --> K[HomeHeader]
-  F --> L[HomeHero]
-  F --> M[HomeSearchField]
-  F --> N[HomeSnippetRow]
-  G --> O[SnippetCard]
-  H --> P[FilesHeader]
-  H --> Q[FolderTabs]
-  H --> R[TemplatePanel]
-  H --> S[FileRow]
-  I --> T[Settings Cards]
-  J --> U[Snippet Form]
-  J --> V[Snippet Details Header]
-  J --> W[SyntaxHighlightedCode]
-  J --> X[Attachment Preview Modal]
-  J --> Y[Floating AI Assistant]
-  C --> Z[Shared App Alert Modal]
-```
-

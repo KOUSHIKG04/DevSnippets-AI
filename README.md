@@ -1,40 +1,65 @@
-# DevShelf
+<p align="center">
+  <img src="./assets/images/icon.png" width="96" alt="DevShelf app icon" />
+</p>
+
+<h1 align="center">DevShelf</h1>
+
+<p align="center">
+  Offline-first mobile code snippet manager with local files, favorites, exports, and Gemini-powered snippet explanations.
+</p>
+
+<p align="center">
+  <img alt="Expo SDK 55" src="https://img.shields.io/badge/Expo-SDK%2055-000020?logo=expo&logoColor=white" />
+  <img alt="React Native" src="https://img.shields.io/badge/React%20Native-Mobile-61DAFB?logo=react&logoColor=111111" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white" />
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-Offline%20Storage-003B57?logo=sqlite&logoColor=white" />
+  <img alt="Gemini" src="https://img.shields.io/badge/Gemini-AI%20Assistant-8E75B2?logo=googlegemini&logoColor=white" />
+</p>
+
+## Overview
 
 DevShelf is an Expo, React Native, and TypeScript mobile app for saving, organizing, exporting, and understanding reusable code snippets directly on-device. The app is offline-first for core snippet and file workflows, with optional Gemini-powered AI explanations when an internet connection and API key are available.
 
+## Navigation
+
+| Section | What It Covers |
+| --- | --- |
+| [Tech Stack](#tech-stack) | Frameworks, storage, file, and AI tools |
+| [Features](#features) | Core app capabilities |
+| [Project Structure](#project-structure) | Main source folders and route layout |
+| [Database Structure](#database-structure) | SQLite tables and local schema |
+| [Offline Storage Approach](#offline-storage-approach) | Local-first persistence strategy |
+| [File Management Implementation](#file-management-implementation) | Expo FileSystem folders and actions |
+| [AI Integration Workflow](#ai-integration-workflow) | Gemini request flow and UX states |
+| [Running The App](#running-the-app) | Local setup and checks |
+
 ## Tech Stack
 
-- Expo SDK 55
-- React Native
-- TypeScript
-- Expo Router
-- SQLite via `expo-sqlite`
-- AsyncStorage
-- SecureStore
-- Expo FileSystem
-- Expo Sharing
-- Expo Image Picker
-- Gemini API
+| Layer | Technology |
+| --- | --- |
+| Mobile runtime | Expo SDK 55, React Native |
+| Language | TypeScript |
+| Navigation | Expo Router |
+| Snippet database | SQLite via `expo-sqlite` |
+| Preferences | AsyncStorage |
+| Secrets | SecureStore |
+| File storage | Expo FileSystem |
+| Sharing | Expo Sharing |
+| Attachments | Expo Image Picker |
+| AI | Gemini API |
 
 ## Features
 
-- Create, edit, delete, search, and view snippets
-- Mark snippets as favorites
-- Store snippets locally in SQLite
-- Store theme, default language, and editor font-size preferences in AsyncStorage
-- Store Gemini API keys securely with SecureStore
-- Dark/light theme switching
-- Syntax-colored code display
-- Screenshot/image attachments for snippets
-- Full-screen attachment preview with native sharing
-- Export snippets as `.txt`, `.js`, and `.json`
-- Share exported snippets through the native share sheet
-- Browse local exports, attachments, and templates in the Files tab
-- Copy, move, delete, and use locally stored files/templates
-- Save starter templates locally
-- Floating Gemini AI assistant on snippet details
-- Generate snippet explanations, summaries, and improvement suggestions
-- Formatted AI responses with headings, lists, inline code, and code blocks
+| Area | Highlights |
+| --- | --- |
+| Snippets | Create, edit, delete, search, favorite, and browse reusable code |
+| Offline storage | SQLite-backed snippets and local file workflows keep working offline |
+| Files | Browse exports, attachments, and templates; copy, move, delete, and use files |
+| Attachments | Add screenshot attachments, preview them full-screen, and share them |
+| Export | Save and share snippets as `.txt`, `.js`, and `.json` |
+| AI assistant | Floating Gemini assistant for explanations, summaries, and improvements |
+| Preferences | Theme, default language, editor font size, and secure Gemini key storage |
+| UI polish | Dark/light theme, syntax-colored code, formatted AI responses, and native alerts |
 
 ## Project Structure
 
@@ -110,12 +135,12 @@ CREATE TABLE IF NOT EXISTS snippets (
 );
 ```
 
-Notes:
-
-- `tags` is stored as JSON text and parsed in the app.
-- `is_favorite` is stored as `0` or `1`.
-- Snippets are ordered by `updated_at DESC`.
-- Search checks title, code, and language locally.
+| Column | Purpose |
+| --- | --- |
+| `tags` | Stored as JSON text and parsed in the app |
+| `is_favorite` | Stored as `0` or `1` |
+| `updated_at` | Used for default snippet ordering |
+| `title`, `code`, `language` | Used by local search |
 
 ### `snippet_attachments`
 
@@ -132,27 +157,18 @@ CREATE TABLE IF NOT EXISTS snippet_attachments (
 );
 ```
 
-Notes:
-
-- Attachment files are stored with Expo FileSystem.
-- SQLite stores the file URI and metadata.
-- Deleting an attachment removes both metadata and the local file.
+Attachment files are stored with Expo FileSystem. SQLite stores the file URI and metadata, and deleting an attachment removes both metadata and the local file.
 
 ## Offline Storage Approach
 
 DevShelf is local-first for its core workflows.
 
-- SQLite stores snippets and attachment metadata.
-- AsyncStorage stores app preferences:
-  - theme
-  - default language
-  - editor font size
-- SecureStore stores sensitive data:
-  - Gemini API key
-- Expo FileSystem stores local files:
-  - exports
-  - attachments
-  - templates
+| Storage | Used For |
+| --- | --- |
+| SQLite | Snippets and attachment metadata |
+| AsyncStorage | Theme, default language, and editor font size |
+| SecureStore | Gemini API key |
+| Expo FileSystem | Exports, attachments, and templates |
 
 Works offline:
 
@@ -183,6 +199,12 @@ documentDirectory/devsnippets/
   templates/
 ```
 
+| Folder | Purpose |
+| --- | --- |
+| `exports` | Snippet files saved as `.txt`, `.js`, or `.json` |
+| `attachments` | Screenshot/image files attached to snippets |
+| `templates` | Starter templates and reusable local code resources |
+
 Implemented file operations:
 
 - create required directories
@@ -212,23 +234,22 @@ Workflow:
 2. The key is stored in SecureStore.
 3. User opens a snippet detail screen.
 4. User taps the floating `AI` button.
-5. User chooses:
-   - Explain
-   - Summarize
-   - Improve
+5. User chooses Explain, Summarize, or Improve.
 6. The app reads the Gemini key from SecureStore.
 7. The selected snippet title, language, tags, and code are sent to Gemini.
 8. The generated response appears in the floating AI window.
 
 AI UX handling:
 
-- Missing key: asks the user to add a Gemini API key in Settings.
-- Bad or rejected key: tells the user to check the saved Gemini key.
-- No internet: tells the user Gemini could not be reached.
-- Rate limit/quota: tells the user Gemini quota or rate limit was reached.
-- Server issue: tells the user Gemini is temporarily unavailable.
-- Loading: floating AI window shows a loading state while the request runs.
-- Long responses: response content scrolls inside the floating AI window.
+| State | App Behavior |
+| --- | --- |
+| Missing key | Asks the user to add a Gemini API key in Settings |
+| Bad key | Tells the user to check the saved Gemini key |
+| No internet | Tells the user Gemini could not be reached |
+| Rate limit or quota | Tells the user Gemini quota or rate limit was reached |
+| Server issue | Tells the user Gemini is temporarily unavailable |
+| Loading | Shows a loading state in the floating AI window |
+| Long response | Scrolls inside the floating AI window |
 
 Improve prompt behavior:
 
@@ -262,7 +283,7 @@ flowchart TD
 
 Snippet detail supports:
 
-- Save as `.txt`, `.js`, `.json` & Share as `.txt`, `.js`, `.json`
+- Save as `.txt`, `.js`, `.json` and share as `.txt`, `.js`, `.json`
 
 Exports are saved locally before sharing so they also appear in the Files tab.
 

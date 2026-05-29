@@ -1,19 +1,19 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Tabs, usePathname, useRouter } from "expo-router";
-import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Pressable, StyleSheet } from "react-native";
 import { useAppTheme } from "../../theme";
 
 const tabs = [
   { name: "index", icon: "home-outline", route: "/" },
-  { name: "favorite", icon: "star-outline", route: "/favorite" },
-  { name: "files", icon: "folder-outline", route: "/files" },
+  { name: "favorite", icon: "heart-outline", route: "/favorite" },
+  { name: "files", icon: "document-outline", route: "/files" },
   { name: "settings", icon: "settings-outline", route: "/settings" },
 ] as const;
 
 function FloatingTabBar() {
-  const router = useRouter();
+  const { push } = useRouter();
   const pathname = usePathname();
-  const { colors } = useAppTheme();
+  const { colors, colorScheme } = useAppTheme();
 
   return (
     <View style={styles.wrapper}>
@@ -23,6 +23,10 @@ function FloatingTabBar() {
           {
             backgroundColor: colors.sidebar,
             borderColor: colors.sidebarBorder,
+            boxShadow:
+              colorScheme === "dark"
+                ? "0px 0px 14px rgba(255, 255, 255, 0.08)"
+                : "0px 6px 16px rgba(0, 0, 0, 0.1)",
           },
         ]}
       >
@@ -32,13 +36,13 @@ function FloatingTabBar() {
             (tab.route === "/" && pathname === "/index");
 
           return (
-            <TouchableOpacity
+            <Pressable
               key={tab.name}
               style={[
                 styles.item,
                 isActive && { backgroundColor: colors.primary },
               ]}
-              onPress={() => router.push(tab.route)}
+              onPress={() => push(tab.route)}
             >
               <Ionicons
                 name={tab.icon as any}
@@ -49,7 +53,7 @@ function FloatingTabBar() {
                     : colors.mutedForeground
                 }
               />
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </View>
@@ -80,7 +84,7 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   wrapper: {
     position: "absolute",
-    bottom: 28,
+    bottom: 24,
     left: 0,
     right: 0,
     alignItems: "center",
@@ -90,21 +94,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     borderRadius: 999,
     height: 64,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     alignItems: "center",
-    width: "70%",
+    width: "72%",
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
   },
   item: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    height: 48,
+    minHeight: 48,
     borderRadius: 999,
+    paddingHorizontal: 4,
   },
 });

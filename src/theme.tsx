@@ -9,13 +9,14 @@ import {
   PropsWithChildren,
   use,
   useEffect,
-  useState,
+  useSyncExternalStore,
 } from "react";
 import {
-  getEditorFontSize,
-  getTheme,
+  getPreferenceSnapshot,
+  loadPreferences,
   saveEditorFontSize,
   saveTheme,
+  subscribePreferences,
   type AppTheme,
 } from "./storage/preference";
 
@@ -131,33 +132,18 @@ type AppThemeContextValue = {
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
 export function AppThemeProvider({ children }: PropsWithChildren) {
-  const [colorScheme, setColorSchemeState] = useState<AppTheme>("light");
-  const [editorFontSize, setEditorFontSizeState] = useState(14);
-  const [isReady, setIsReady] = useState(false);
+  const preferences = useSyncExternalStore(
+    subscribePreferences,
+    getPreferenceSnapshot,
+    getPreferenceSnapshot,
+  );
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadTheme() {
-      const [storedTheme, storedEditorFontSize] = await Promise.all([
-        getTheme(),
-        getEditorFontSize(),
-      ]);
-
-      if (isMounted) {
-        setColorSchemeState(storedTheme);
-        setEditorFontSizeState(storedEditorFontSize);
-        setIsReady(true);
-      }
-    }
-
-    loadTheme();
-
-    return () => {
-      isMounted = false;
-    };
+    loadPreferences();
   }, []);
 
+  const colorScheme = preferences.theme;
+  const editorFontSize = preferences.editorFontSize;
   const colors = appThemes[colorScheme];
 
   useEffect(() => {
@@ -185,13 +171,11 @@ export function AppThemeProvider({ children }: PropsWithChildren) {
       mono: "GeistMono_400Regular",
     },
     editorFontSize,
-    isReady,
+    isReady: preferences.isReady,
     setColorScheme: async (theme: AppTheme) => {
-      setColorSchemeState(theme);
       await saveTheme(theme);
     },
     setEditorFontSize: async (size: number) => {
-      setEditorFontSizeState(size);
       await saveEditorFontSize(size);
     },
   };

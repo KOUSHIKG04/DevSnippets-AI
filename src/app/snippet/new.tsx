@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { router } from "expo-router";
-  import { useEffect, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+  import { useState } from "react";
   import {
+    FlatList,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -16,37 +17,39 @@ import { router } from "expo-router";
   import { LANGUAGE_OPTIONS } from "../../constants/languages";
   import { createSnippet } from "../../db/snippet";
   import { fontStyles } from "../../fontDefaults";
-  import { getDefaultLanguage } from "../../storage/preference";
+  import { getPreferenceSnapshot } from "../../storage/preference";
   import { useAppTheme } from "../../theme";
 
+  type SnippetFormState = {
+    code: string;
+    language?: string;
+    tags: string;
+    title: string;
+  };
+
   export default function CreateSnippetScreen() {
-    const [title, setTitle] = useState("");
-    const [language, setLanguage] = useState("");
+    const params = useLocalSearchParams<{ code?: string }>();
     const [isLanguagePickerOpen, setIsLanguagePickerOpen] = useState(false);
-    const [tags, setTags] = useState("");
-    const [code, setCode] = useState("");
+    const [form, setForm] = useState<SnippetFormState>({
+      code: params.code ?? "",
+      language: getPreferenceSnapshot().defaultLanguage,
+      tags: "",
+      title: "",
+    });
     const { colors, editorFontSize, fonts } = useAppTheme();
     const { showAlert } = useAppAlert();
 
-    useEffect(() => {
-      async function loadDefaultLanguage() {
-        setLanguage(await getDefaultLanguage());
-      }
-
-      loadDefaultLanguage();
-    }, []);
-
     function handleSave() {
-      const trimmedTitle = title.trim();
-      const trimmedLanguage = language.trim();
-      const trimmedCode = code.trim();
+      const trimmedTitle = form.title.trim();
+      const trimmedLanguage = (form.language ?? "").trim();
+      const trimmedCode = form.code.trim();
 
       if (!trimmedTitle || !trimmedLanguage || !trimmedCode) {
         showAlert("Missing details", "Title, language, and code are required.");
         return;
       }
 
-      const tagList = tags
+      const tagList = form.tags
         .split(",")
         .flatMap((tag) => {
           const trimmedTag = tag.trim();
@@ -56,11 +59,26 @@ import { router } from "expo-router";
       createSnippet({
         title: trimmedTitle,
         language: trimmedLanguage,
-        code: code.replace(/\r\n/g, "\n"),
+        code: form.code.replace(/\r\n/g, "\n"),
         tags: tagList,
       });
 
       router.back();
+    }
+
+    function handleSelectLanguage(language: string) {
+      setForm((currentForm) => ({ ...currentForm, language }));
+      setIsLanguagePickerOpen(false);
+    }
+
+    function renderLanguageOption({ item }: { item: string }) {
+      return (
+        <LanguageOptionRow
+          isSelected={form.language === item}
+          option={item}
+          onSelect={handleSelectLanguage}
+        />
+      );
     }
 
     return (
@@ -70,19 +88,33 @@ import { router } from "expo-router";
       >
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              New Snippet
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              Save reusable code for later.
-            </Text>
+            <View style={styles.headerTitleRow}>
+              <Pressable
+                style={[
+                  styles.backButton,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+                onPress={() => router.back()}
+              >
+                <Ionicons
+                  name="arrow-back"
+                  size={24}
+                  color={colors.foreground}
+                />
+              </Pressable>
+              <Text style={[styles.title, { color: colors.foreground }]}>
+                New Snippet
+              </Text>
+            </View>
           </View>
 
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.foreground }]}>Title</Text>
             <TextInput
-              value={title}
-              onChangeText={setTitle}
+              value={form.title}
+              onChangeText={(title) =>
+                setForm((currentForm) => ({ ...currentForm, title }))
+              }
               placeholder="React Native fetch helper"
               placeholderTextColor={colors.mutedForeground}
               style={[
@@ -111,7 +143,7 @@ import { router } from "expo-router";
               onPress={() => setIsLanguagePickerOpen(true)}
             >
               <Text style={[styles.dropdownText, { color: colors.foreground }]}>
-                {language || "TypeScript"}
+                {form.language || "TypeScript"}
               </Text>
               <Ionicons
                 name="chevron-down"
@@ -146,37 +178,13 @@ import { router } from "expo-router";
                 >
                   Language
                 </Text>
-                <ScrollView style={styles.languageOptions}>
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <Pressable
-                      key={option}
-                      style={[
-                        styles.languageOption,
-                        language === option && {
-                          backgroundColor: colors.secondary,
-                        },
-                      ]}
-                      onPress={() => {
-                        setLanguage(option);
-                        setIsLanguagePickerOpen(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.languageOptionText,
-                          {
-                            color:
-                              language === option
-                                ? colors.codeAccent
-                                : colors.foreground,
-                          },
-                        ]}
-                      >
-                        {option}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
+                <FlatList
+                  data={LANGUAGE_OPTIONS}
+                  keyExtractor={(option) => option}
+                  style={styles.languageOptions}
+                  contentContainerStyle={styles.languageOptionsContent}
+                  renderItem={renderLanguageOption}
+                />
               </Pressable>
             </Pressable>
           </Modal>
@@ -184,8 +192,10 @@ import { router } from "expo-router";
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.foreground }]}>Tags</Text>
             <TextInput
-              value={tags}
-              onChangeText={setTags}
+              value={form.tags}
+              onChangeText={(tags) =>
+                setForm((currentForm) => ({ ...currentForm, tags }))
+              }
               placeholder="react-native, api, helper"
               placeholderTextColor={colors.mutedForeground}
               style={[
@@ -203,8 +213,10 @@ import { router } from "expo-router";
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.foreground }]}>Code</Text>
             <TextInput
-              value={code}
-              onChangeText={setCode}
+              value={form.code}
+              onChangeText={(code) =>
+                setForm((currentForm) => ({ ...currentForm, code }))
+              }
               placeholder="Paste your code here"
               placeholderTextColor={colors.mutedForeground}
               style={[
@@ -225,32 +237,76 @@ import { router } from "expo-router";
             />
           </View>
 
-          <Pressable
-            style={[styles.saveButton, { backgroundColor: colors.primary }]}
-            onPress={handleSave}
-          >
-            <Text
-              style={[
-                styles.saveButtonText,
-                { color: colors.primaryForeground },
-              ]}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={[styles.cancelButton, { borderColor: colors.input }]}
+              onPress={() => router.back()}
             >
-              Save Snippet
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.cancelButtonText,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Cancel
+              </Text>
+            </Pressable>
 
-          <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-            <Text
-              style={[
-                styles.cancelButtonText,
-                { color: colors.mutedForeground },
-              ]}
+            <Pressable
+              style={[styles.saveButton, { backgroundColor: colors.primary }]}
+              onPress={handleSave}
             >
-              Cancel
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.saveButtonText,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                Save Snippet
+              </Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
+    );
+  }
+
+  function LanguageOptionRow({
+    isSelected,
+    onSelect,
+    option,
+  }: {
+    isSelected: boolean;
+    onSelect: (option: string) => void;
+    option: string;
+  }) {
+    const { colors } = useAppTheme();
+
+    function handlePress() {
+      onSelect(option);
+    }
+
+    return (
+      <Pressable
+        style={[
+          styles.languageOption,
+          isSelected && {
+            backgroundColor: colors.secondary,
+          },
+        ]}
+        onPress={handlePress}
+      >
+        <Text
+          style={[
+            styles.languageOptionText,
+            {
+              color: isSelected ? colors.codeAccent : colors.foreground,
+            },
+          ]}
+        >
+          {option}
+        </Text>
+      </Pressable>
     );
   }
 
@@ -270,10 +326,20 @@ import { router } from "expo-router";
       ...fontStyles.extraBold,
       fontSize: 30,
     },
-    subtitle: {
-      ...fontStyles.regular,
-      fontSize: 14,
-      marginTop: 4,
+    headerTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      padding: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: -6,
     },
     field: {
       marginBottom: 16,
@@ -295,22 +361,29 @@ import { router } from "expo-router";
     codeInput: {
       minHeight: 240,
     },
+    actionRow: {
+      flexDirection: "row",
+      gap: 12,
+      marginTop: 8,
+    },
     saveButton: {
+      flex: 1,
       height: 52,
       borderRadius: 8,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 8,
     },
     saveButtonText: {
       ...fontStyles.extraBold,
       fontSize: 16,
     },
     cancelButton: {
-      height: 48,
+      flex: 1,
+      height: 52,
+      borderRadius: 8,
+      borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 8,
     },
     cancelButtonText: {
       ...fontStyles.bold,
@@ -328,6 +401,7 @@ import { router } from "expo-router";
     },
     dropdownText: {
       ...fontStyles.regular,
+      flex: 1,
       fontSize: 15,
     },
     modalBackdrop: {
@@ -349,6 +423,9 @@ import { router } from "expo-router";
     },
     languageOptions: {
       maxHeight: 360,
+    },
+    languageOptionsContent: {
+      paddingRight: 10,
     },
     languageOption: {
       height: 42,

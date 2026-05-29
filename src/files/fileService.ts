@@ -37,6 +37,10 @@ export async function writeTextFile(uri: string, content: string) {
   return uri;
 }
 
+export async function readTextFile(uri: string) {
+  return await FileSystem.readAsStringAsync(uri);
+}
+
 export async function copyFile(fromUri: string, toUri: string) {
   await ensureFileDirs();
   await FileSystem.copyAsync({ from: fromUri, to: toUri });

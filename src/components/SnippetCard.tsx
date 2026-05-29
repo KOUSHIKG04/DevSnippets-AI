@@ -44,7 +44,7 @@ export default function SnippetCard({
           onPress={onToggleFavorite}
         >
           <Ionicons
-            name={snippet.isFavorite ? "star" : "star-outline"}
+            name={snippet.isFavorite ? "heart" : "heart-outline"}
             size={20}
             color={colors.codeAccent}
           />

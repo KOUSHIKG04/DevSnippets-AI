@@ -1,45 +1,64 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { ImageBackground } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
-  Pressable,
+  Keyboard,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
 import { useAppAlert } from "../../components/AppAlert";
 import EmptyState from "../../components/EmptyState";
-import SnippetCard from "../../components/SnippetCard";
+import { HomeHeader } from "../../components/HomeHeader";
+import { HomeHero } from "../../components/HomeHero";
+import { HomeRecentHeader } from "../../components/HomeRecentHeader";
+import { HomeSearchField } from "../../components/HomeSearchField";
+import { HomeSnippetRow } from "../../components/HomeSnippetRow";
 import { getSnippets, toggleFavorite } from "../../db/snippet";
-import { fontStyles } from "../../fontDefaults";
 import { useAppTheme } from "../../theme";
 import { Snippet } from "../../types/snippet";
 
+const homeTexture = require("../../../assets/images/—Pngtree—grunge overlay texture_9025510.png");
+
 export default function HomeScreen() {
   const [search, setSearch] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { width } = useWindowDimensions();
-  const { colors } = useAppTheme();
+  const { colors, colorScheme } = useAppTheme();
   const { showAlert } = useAppAlert();
 
   const isWide = width >= 768;
 
-  const loadSnippets = useCallback(() => {
+  function loadSnippets() {
     try {
       setSnippets(getSnippets(search));
     } catch {
       showAlert("Storage error", "Could not load snippets.");
     }
-  }, [search, showAlert]);
+    setIsLoading(false);
+  }
 
-  useFocusEffect(
-    useCallback(() => {
-      loadSnippets();
-    }, [loadSnippets]),
-  );
+  useFocusEffect(() => {
+    loadSnippets();
+  });
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
+      setIsSearchFocused(true);
+    });
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
+      setIsSearchFocused(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   function handleSearch(value: string) {
     setSearch(value);
@@ -51,127 +70,101 @@ export default function HomeScreen() {
     loadSnippets();
   }
 
+  function renderSnippet({ item }: { item: Snippet }) {
+    return (
+      <HomeSnippetRow
+        snippet={item}
+        onPress={() => router.push(`/snippet/${item.id}`)}
+        onToggleFavorite={() => handleToggleFavorite(item)}
+      />
+    );
+  }
+
   return (
-    <View
+    <ImageBackground
+      source={homeTexture}
+      contentFit="cover"
       style={[
         styles.container,
         {
           backgroundColor: colors.background,
-          paddingHorizontal: isWide ? 32 : 18,
         },
       ]}
     >
-      <View style={styles.header}>
-        <View>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.foreground, fontSize: isWide ? 34 : 30 },
-            ]}
-          >
-            DevShelf
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Your offline code library
-          </Text>
-        </View>
-      </View>
-
-      <TextInput
-        value={search}
-        onChangeText={handleSearch}
-        placeholder="Search snippets, code, or language"
-        placeholderTextColor={colors.mutedForeground}
+      <View
         style={[
-          styles.searchInput,
+          styles.backdrop,
           {
-            backgroundColor: colors.card,
-            borderColor: colors.input,
-            color: colors.foreground,
+            backgroundColor:
+              colorScheme === "dark"
+                ? "rgba(10, 10, 10, 0.88)"
+                : "rgba(255, 255, 255, 0.9)",
           },
         ]}
       />
-
-      <FlatList
-        data={snippets}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={[
-          styles.listContent,
-          {
-            maxWidth: isWide ? 760 : undefined,
-            alignSelf: "stretch",
-            width: "100%",
-          },
-        ]}
-        ListEmptyComponent={
-          <EmptyState
-            title="No snippets yet"
-            message="Create your first reusable code snippet."
-          />
-        }
-        renderItem={({ item }) => (
-          <SnippetCard
-            snippet={item}
-            onPress={() => router.push(`/snippet/${item.id}`)}
-            onToggleFavorite={() => handleToggleFavorite(item)}
-          />
-        )}
-      />
-
-      <Pressable
-        style={[styles.createButton, { backgroundColor: colors.primary }]}
-        onPress={() => router.push("/snippet/new")}
-      >
-        <Ionicons name="add" size={30} color={colors.primaryForeground} />
-      </Pressable>
-    </View>
+      {isLoading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={snippets}
+          keyExtractor={(item) => String(item.id)}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              maxWidth: isWide ? 820 : undefined,
+              alignSelf: "center",
+              paddingHorizontal: isWide ? 32 : 18,
+              width: "100%",
+            },
+          ]}
+          ListHeaderComponent={
+            <>
+              <HomeHeader />
+              {!isSearchFocused && (
+                <HomeHero onCreatePress={() => router.push("/snippet/new")} />
+              )}
+              <HomeSearchField
+                value={search}
+                onBlur={() => setIsSearchFocused(false)}
+                onChangeText={handleSearch}
+                onFocus={() => setIsSearchFocused(true)}
+              />
+              <HomeRecentHeader count={snippets.length} />
+            </>
+          }
+          ListEmptyComponent={
+            <EmptyState
+              title="No snippets yet"
+              message="Create your first reusable code snippet."
+            />
+          }
+          renderItem={renderSnippet}
+        />
+      )}
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 56,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  title: {
-    ...fontStyles.extraBold,
-  },
-  subtitle: {
-    ...fontStyles.regular,
-    fontSize: 14,
-    marginTop: 4,
-  },
-  createButton: {
-    position: "absolute",
-    right: 22,
-    bottom: 118,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  searchInput: {
-    ...fontStyles.regular,
-    height: 48,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    fontSize: 15,
-    marginTop: 22,
-    borderWidth: 1,
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
   },
   listContent: {
-    paddingVertical: 18,
+    paddingTop: 56,
+    paddingBottom: 220,
     gap: 12,
+  },
+  loader: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

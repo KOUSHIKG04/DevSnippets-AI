@@ -2,8 +2,21 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useReducer, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  AiInsightKind,
+  generateSnippetInsight,
+} from "../../ai/aiService";
+import { AiFormattedText } from "../../components/AiFormattedText";
 import { useAppAlert } from "../../components/AppAlert";
 import { SyntaxHighlightedCode } from "../../components/SyntaxHighlightedCode";
 import {
@@ -25,6 +38,67 @@ import { fontStyles } from "../../fontDefaults";
 import { useAppTheme } from "../../theme";
 import { Snippet, SnippetAttachment } from "../../types/snippet";
 
+const EXPORT_FORMAT_OPTIONS: {
+  description: string;
+  label: string;
+  value: SnippetExportFormat;
+}[] = [
+  { description: "Plain text file", label: "TXT", value: "txt" },
+  { description: "JavaScript source file", label: "JS", value: "js" },
+  { description: "Structured snippet data", label: "JSON", value: "json" },
+];
+
+type DetailUiState = {
+  activeExportMenu: "export" | "share" | null;
+  aiInsight: string;
+  aiInsightKind: AiInsightKind | null;
+  isGeneratingInsight: boolean;
+  selectedAttachment: SnippetAttachment | null;
+};
+
+type DetailUiAction =
+  | { kind: AiInsightKind; type: "startInsight" }
+  | { text: string; type: "finishInsight" }
+  | { type: "finishInsightWithError" }
+  | { attachment: SnippetAttachment | null; type: "selectAttachment" }
+  | { menu: "export" | "share" | null; type: "setExportMenu" };
+
+const initialDetailUiState: DetailUiState = {
+  activeExportMenu: null,
+  aiInsight: "",
+  aiInsightKind: null,
+  isGeneratingInsight: false,
+  selectedAttachment: null,
+};
+
+function detailUiReducer(
+  state: DetailUiState,
+  action: DetailUiAction,
+): DetailUiState {
+  switch (action.type) {
+    case "startInsight":
+      return {
+        ...state,
+        aiInsightKind: action.kind,
+        isGeneratingInsight: true,
+      };
+    case "finishInsight":
+      return {
+        ...state,
+        aiInsight: action.text,
+        isGeneratingInsight: false,
+      };
+    case "finishInsightWithError":
+      return { ...state, isGeneratingInsight: false };
+    case "selectAttachment":
+      return { ...state, selectedAttachment: action.attachment };
+    case "setExportMenu":
+      return { ...state, activeExportMenu: action.menu };
+    default:
+      return state;
+  }
+}
+
 export default function SnippetDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const snippetId = Number(id);
@@ -34,7 +108,11 @@ export default function SnippetDetailsScreen() {
   const [attachments, setAttachments] = useState<SnippetAttachment[]>(() =>
     Number.isFinite(snippetId) ? getSnippetAttachments(snippetId) : [],
   );
-  const { colors, editorFontSize, fonts } = useAppTheme();
+  const [uiState, dispatchUi] = useReducer(
+    detailUiReducer,
+    initialDetailUiState,
+  );
+  const { colors } = useAppTheme();
   const { showAlert } = useAppAlert();
 
   function loadSnippet() {
@@ -127,8 +205,10 @@ export default function SnippetDetailsScreen() {
       await saveSnippetExport(filename, content);
 
       showAlert("Exported", `${filename} saved to local files.`);
+      dispatchUi({ menu: null, type: "setExportMenu" });
     } catch {
       showAlert("Export failed", "Could not export this snippet.");
+      dispatchUi({ menu: null, type: "setExportMenu" });
     }
   }
 
@@ -141,8 +221,10 @@ export default function SnippetDetailsScreen() {
       const uri = await saveSnippetExport(filename, content);
 
       await shareFile(uri);
+      dispatchUi({ menu: null, type: "setExportMenu" });
     } catch {
       showAlert("Share failed", "Could not share this snippet.");
+      dispatchUi({ menu: null, type: "setExportMenu" });
     }
   }
 
@@ -194,320 +276,650 @@ export default function SnippetDetailsScreen() {
     }
   }
 
+  async function handleShareAttachment(attachment: SnippetAttachment) {
+    try {
+      await shareFile(attachment.uri);
+    } catch {
+      showAlert("Share failed", "Could not share this attachment.");
+    }
+  }
+
+  async function handleGenerateInsight(kind: AiInsightKind) {
+    if (!snippet) return;
+
+    dispatchUi({ kind, type: "startInsight" });
+
+    try {
+      dispatchUi({
+        text: await generateSnippetInsight(snippet, kind),
+        type: "finishInsight",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Could not generate an AI response.";
+
+      showAlert("AI request failed", message);
+      dispatchUi({ type: "finishInsightWithError" });
+    }
+  }
+
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.container}
     >
-      <View style={styles.header}>
-        <View style={styles.titleArea}>
+      <SnippetDetailHeader
+        snippet={snippet}
+        onBack={() => router.back()}
+        onToggleFavorite={handleToggleFavorite}
+      />
+      <SnippetTagList tags={snippet.tags} />
+
+      <SnippetCodeSection snippet={snippet} />
+
+      <SnippetAiSection
+        uiState={uiState}
+        onGenerateInsight={handleGenerateInsight}
+      />
+
+      <SnippetAttachmentsSection
+        attachments={attachments}
+        onAttach={handleAttachScreenshot}
+        onDeleteAttachment={handleDeleteAttachment}
+        onPreviewAttachment={(attachment) =>
+          dispatchUi({ attachment, type: "selectAttachment" })
+        }
+      />
+
+      <SnippetDetailActions snippet={snippet} onDelete={handleDelete} />
+      <SnippetExportControls
+        onOpenExport={() =>
+          dispatchUi({ menu: "export", type: "setExportMenu" })
+        }
+        onOpenShare={() =>
+          dispatchUi({ menu: "share", type: "setExportMenu" })
+        }
+      />
+      <SnippetMeta snippet={snippet} />
+
+      <AttachmentPreviewModal
+        attachment={uiState.selectedAttachment}
+        onClose={() => dispatchUi({ attachment: null, type: "selectAttachment" })}
+        onShare={handleShareAttachment}
+      />
+      <ExportFormatModal
+        activeMenu={uiState.activeExportMenu}
+        onClose={() => dispatchUi({ menu: null, type: "setExportMenu" })}
+        onExport={handleExport}
+        onShare={handleShare}
+      />
+    </ScrollView>
+  );
+}
+
+function getInsightTitle(kind: AiInsightKind) {
+  if (kind === "explain") {
+    return "Explanation";
+  }
+
+  if (kind === "summarize") {
+    return "Summary";
+  }
+
+  return "Improvement Suggestions";
+}
+
+function SnippetDetailHeader({
+  onBack,
+  onToggleFavorite,
+  snippet,
+}: {
+  onBack: () => void;
+  onToggleFavorite: () => void;
+  snippet: Snippet;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.header}>
+      <View style={styles.titleArea}>
+        <View style={styles.headerTitleRow}>
+          <Pressable
+            style={[
+              styles.backButton,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onPress={onBack}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.foreground} />
+          </Pressable>
           <Text style={[styles.title, { color: colors.foreground }]}>
             {snippet.title}
           </Text>
-          <Text style={[styles.language, { color: colors.codeAccent }]}>
-            {snippet.language}
-          </Text>
         </View>
-
-        <Pressable
-          style={[
-            styles.favoriteButton,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-          onPress={handleToggleFavorite}
-        >
-          <Ionicons
-            name={snippet.isFavorite ? "star" : "star-outline"}
-            size={22}
-            color={colors.codeAccent}
-          />
-        </Pressable>
-      </View>
-
-      <View style={styles.tags}>
-        {snippet.tags.map((tag) => (
-          <View
-            key={tag}
-            style={[
-              styles.tagChip,
-              {
-                backgroundColor: colors.tagBackground,
-              },
-            ]}
-          >
-            <Text style={[styles.tagText, { color: colors.tagForeground }]}>
-              #{tag}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Code
+        <Text style={[styles.language, { color: colors.codeAccent }]}>
+          {snippet.language}
         </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator
+      </View>
+
+      <Pressable
+        style={[
+          styles.favoriteButton,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+        onPress={onToggleFavorite}
+      >
+        <Ionicons
+          name={snippet.isFavorite ? "heart" : "heart-outline"}
+          size={22}
+          color={colors.codeAccent}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
+function SnippetTagList({ tags }: { tags: string[] }) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.tags}>
+      {tags.map((tag) => (
+        <View
+          key={tag}
           style={[
-            styles.codeBlock,
+            styles.tagChip,
             {
-              backgroundColor: colors.code,
+              backgroundColor: colors.tagBackground,
             },
           ]}
         >
-          <SyntaxHighlightedCode
-            code={snippet.code}
-            selectable
-            style={[
-              styles.codeText,
-              {
-                fontSize: editorFontSize,
-                lineHeight: Math.round(editorFontSize * 1.55),
-                fontFamily: fonts.mono,
-              },
-            ]}
-          />
-        </ScrollView>
+          <Text style={[styles.tagText, { color: colors.tagForeground }]}>
+            #{tag}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function SnippetCodeSection({ snippet }: { snippet: Snippet }) {
+  const { colors, editorFontSize, fonts } = useAppTheme();
+
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+        Code
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        style={[styles.codeBlock, { backgroundColor: colors.code }]}
+      >
+        <SyntaxHighlightedCode
+          code={snippet.code}
+          selectable
+          style={[
+            styles.codeText,
+            {
+              fontFamily: fonts.mono,
+              fontSize: editorFontSize,
+              lineHeight: Math.round(editorFontSize * 1.55),
+            },
+          ]}
+        />
+      </ScrollView>
+    </View>
+  );
+}
+
+function SnippetAiSection({
+  onGenerateInsight,
+  uiState,
+}: {
+  onGenerateInsight: (kind: AiInsightKind) => void;
+  uiState: DetailUiState;
+}) {
+  const { colors, fonts } = useAppTheme();
+
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+        AI
+      </Text>
+      <View style={styles.aiActions}>
+        {(["explain", "summarize", "improve"] as AiInsightKind[]).map(
+          (kind) => (
+            <Pressable
+              key={kind}
+              disabled={uiState.isGeneratingInsight}
+              style={[styles.aiButton, { backgroundColor: colors.secondary }]}
+              onPress={() => onGenerateInsight(kind)}
+            >
+              <Text style={[styles.aiButtonText, { color: colors.foreground }]}>
+                {getInsightActionLabel(kind)}
+              </Text>
+            </Pressable>
+          ),
+        )}
       </View>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Attachments
+      {(uiState.isGeneratingInsight || uiState.aiInsight) && (
+        <View
+          style={[
+            styles.aiPanel,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.aiPanelTitle, { color: colors.foreground }]}>
+            {uiState.aiInsightKind
+              ? getInsightTitle(uiState.aiInsightKind)
+              : "AI response"}
           </Text>
-
-          <Pressable
-            style={[styles.attachButton, { backgroundColor: colors.secondary }]}
-            onPress={handleAttachScreenshot}
-          >
-            <Ionicons
-              name="image-outline"
-              size={18}
-              color={colors.foreground}
+          {uiState.isGeneratingInsight ? (
+            <View style={styles.aiLoading}>
+              <ActivityIndicator color={colors.primary} />
+              <Text
+                style={[
+                  styles.aiLoadingText,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Generating…
+              </Text>
+            </View>
+          ) : (
+            <AiFormattedText
+              text={uiState.aiInsight}
+              colors={colors}
+              monoFontFamily={fonts.mono}
             />
-            <Text style={[styles.attachButtonText, { color: colors.foreground }]}>
-              Add
-            </Text>
-          </Pressable>
+          )}
         </View>
+      )}
+    </View>
+  );
+}
 
-        {attachments.length === 0 ? (
-          <Text
-            style={[
-              styles.emptyAttachmentText,
-              { color: colors.mutedForeground },
-            ]}
-          >
-            No screenshots attached.
+function getInsightActionLabel(kind: AiInsightKind) {
+  if (kind === "explain") return "Explain";
+  if (kind === "summarize") return "Summarize";
+  return "Improve";
+}
+
+function SnippetAttachmentsSection({
+  attachments,
+  onAttach,
+  onDeleteAttachment,
+  onPreviewAttachment,
+}: {
+  attachments: SnippetAttachment[];
+  onAttach: () => void;
+  onDeleteAttachment: (attachment: SnippetAttachment) => void;
+  onPreviewAttachment: (attachment: SnippetAttachment) => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+          Attachments
+        </Text>
+        <Pressable
+          style={[styles.attachButton, { backgroundColor: colors.secondary }]}
+          onPress={onAttach}
+        >
+          <Ionicons name="image-outline" size={18} color={colors.foreground} />
+          <Text style={[styles.attachButtonText, { color: colors.foreground }]}>
+            Add
           </Text>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.attachmentRow}>
-              {attachments.map((attachment) => (
-                <View
-                  key={attachment.id}
-                  style={[
-                    styles.attachmentCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
+        </Pressable>
+      </View>
+
+      {attachments.length === 0 ? (
+        <Text
+          style={[
+            styles.emptyAttachmentText,
+            { color: colors.mutedForeground },
+          ]}
+        >
+          No screenshots attached.
+        </Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.attachmentRow}>
+            {attachments.map((attachment) => (
+              <View
+                key={attachment.id}
+                style={[
+                  styles.attachmentCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Pressable
+                  style={styles.attachmentPreviewButton}
+                  onPress={() => onPreviewAttachment(attachment)}
                 >
                   <Image
                     source={{ uri: attachment.uri }}
                     style={styles.attachmentImage}
                   />
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.attachmentDeleteButton,
+                    { backgroundColor: colors.destructive },
+                  ]}
+                  onPress={() => onDeleteAttachment(attachment)}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={16}
+                    color={colors.destructiveForeground}
+                  />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
 
-                  <Pressable
-                    style={[
-                      styles.attachmentDeleteButton,
-                      { backgroundColor: colors.destructive },
-                    ]}
-                    onPress={() => handleDeleteAttachment(attachment)}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={16}
-                      color={colors.destructiveForeground}
-                    />
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        )}
-      </View>
+function SnippetDetailActions({
+  onDelete,
+  snippet,
+}: {
+  onDelete: () => void;
+  snippet: Snippet;
+}) {
+  const { colors } = useAppTheme();
 
-      <View style={styles.actions}>
+  return (
+    <View style={styles.actions}>
+      <Pressable
+        style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+        onPress={() =>
+          router.push({
+            pathname: "/snippet/edit",
+            params: { id: String(snippet.id) },
+          })
+        }
+      >
+        <Ionicons
+          name="create-outline"
+          size={18}
+          color={colors.primaryForeground}
+        />
+        <Text
+          style={[
+            styles.primaryButtonText,
+            { color: colors.primaryForeground },
+          ]}
+        >
+          Edit
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={[styles.dangerButton, { backgroundColor: colors.destructive }]}
+        onPress={onDelete}
+      >
+        <Ionicons
+          name="trash-outline"
+          size={18}
+          color={colors.destructiveForeground}
+        />
+        <Text
+          style={[
+            styles.dangerButtonText,
+            { color: colors.destructiveForeground },
+          ]}
+        >
+          Delete
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function SnippetExportControls({
+  onOpenExport,
+  onOpenShare,
+}: {
+  onOpenExport: () => void;
+  onOpenShare: () => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.exportActions}>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+        Export
+      </Text>
+      <View style={styles.exportDropdownRow}>
         <Pressable
-          style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-          onPress={() =>
-            router.push({
-              pathname: "/snippet/edit",
-              params: { id: String(snippet.id) },
-            })
-          }
+          style={[
+            styles.exportDropdown,
+            { backgroundColor: colors.secondary, borderColor: colors.border },
+          ]}
+          onPress={onOpenExport}
         >
           <Ionicons
-            name="create-outline"
+            name="download-outline"
+            size={18}
+            color={colors.foreground}
+          />
+          <Text style={[styles.exportDropdownText, { color: colors.foreground }]}>
+            Save as
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={18}
+            color={colors.mutedForeground}
+          />
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.exportDropdown,
+            { backgroundColor: colors.primary, borderColor: colors.primary },
+          ]}
+          onPress={onOpenShare}
+        >
+          <Ionicons
+            name="share-social-outline"
             size={18}
             color={colors.primaryForeground}
           />
           <Text
             style={[
-              styles.primaryButtonText,
+              styles.exportDropdownText,
               { color: colors.primaryForeground },
             ]}
           >
-            Edit
+            Share as
           </Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.dangerButton, { backgroundColor: colors.destructive }]}
-          onPress={handleDelete}
-        >
           <Ionicons
-            name="trash-outline"
+            name="chevron-down"
             size={18}
-            color={colors.destructiveForeground}
+            color={colors.primaryForeground}
           />
-          <Text
-            style={[
-              styles.dangerButtonText,
-              { color: colors.destructiveForeground },
-            ]}
-          >
-            Delete
-          </Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
 
-      <View style={styles.exportActions}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Export
-        </Text>
-        <View style={styles.exportGrid}>
-          <Pressable
-            style={[styles.exportButton, { backgroundColor: colors.secondary }]}
-            onPress={() => handleExport("txt")}
-          >
-            <Ionicons
-              name="download-outline"
-              size={18}
-              color={colors.foreground}
-            />
-            <Text
-              style={[styles.secondaryActionText, { color: colors.foreground }]}
-            >
-              TXT
-            </Text>
-          </Pressable>
+function SnippetMeta({ snippet }: { snippet: Snippet }) {
+  const { colors } = useAppTheme();
 
-          <Pressable
-            style={[styles.exportButton, { backgroundColor: colors.secondary }]}
-            onPress={() => handleExport("js")}
-          >
-            <Ionicons
-              name="download-outline"
-              size={18}
-              color={colors.foreground}
-            />
-            <Text
-              style={[styles.secondaryActionText, { color: colors.foreground }]}
-            >
-              JS
-            </Text>
-          </Pressable>
+  return (
+    <View style={styles.meta}>
+      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+        Created: {formatDate(snippet.createdAt)}
+      </Text>
+      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+        Updated: {formatDate(snippet.updatedAt)}
+      </Text>
+    </View>
+  );
+}
 
-          <Pressable
-            style={[styles.exportButton, { backgroundColor: colors.secondary }]}
-            onPress={() => handleExport("json")}
-          >
-            <Ionicons
-              name="download-outline"
-              size={18}
-              color={colors.foreground}
-            />
-            <Text
-              style={[styles.secondaryActionText, { color: colors.foreground }]}
-            >
-              JSON
-            </Text>
-          </Pressable>
-        </View>
+function AttachmentPreviewModal({
+  attachment,
+  onClose,
+  onShare,
+}: {
+  attachment: SnippetAttachment | null;
+  onClose: () => void;
+  onShare: (attachment: SnippetAttachment) => void;
+}) {
+  const { colors } = useAppTheme();
 
-        <View style={styles.exportGrid}>
-          <Pressable
-            style={[styles.shareButton, { backgroundColor: colors.primary }]}
-            onPress={() => handleShare("txt")}
-          >
-            <Ionicons
-              name="share-social-outline"
-              size={18}
-              color={colors.primaryForeground}
-            />
-            <Text
-              style={[
-                styles.shareButtonText,
-                { color: colors.primaryForeground },
-              ]}
+  return (
+    <Modal
+      transparent
+      animationType="fade"
+      visible={Boolean(attachment)}
+      onRequestClose={onClose}
+    >
+      <View style={styles.previewBackdrop}>
+        <View
+          style={[
+            styles.previewPanel,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View style={styles.previewHeader}>
+            <View style={styles.previewHeaderText}>
+              <Text style={[styles.previewTitle, { color: colors.foreground }]}>
+                Attachment
+              </Text>
+              {attachment && (
+                <Text
+                  style={[
+                    styles.previewMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Added {formatDate(attachment.createdAt)}
+                </Text>
+              )}
+            </View>
+            <Pressable
+              style={[styles.previewClose, { backgroundColor: colors.secondary }]}
+              onPress={onClose}
             >
-              TXT
-            </Text>
-          </Pressable>
+              <Ionicons name="close" size={22} color={colors.foreground} />
+            </Pressable>
+          </View>
 
-          <Pressable
-            style={[styles.shareButton, { backgroundColor: colors.primary }]}
-            onPress={() => handleShare("js")}
-          >
-            <Ionicons
-              name="share-social-outline"
-              size={18}
-              color={colors.primaryForeground}
-            />
-            <Text
-              style={[
-                styles.shareButtonText,
-                { color: colors.primaryForeground },
-              ]}
-            >
-              JS
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.shareButton, { backgroundColor: colors.primary }]}
-            onPress={() => handleShare("json")}
-          >
-            <Ionicons
-              name="share-social-outline"
-              size={18}
-              color={colors.primaryForeground}
-            />
-            <Text
-              style={[
-                styles.shareButtonText,
-                { color: colors.primaryForeground },
-              ]}
-            >
-              JSON
-            </Text>
-          </Pressable>
+          {attachment && (
+            <View style={styles.previewImageWrap}>
+              <Image
+                source={{ uri: attachment.uri }}
+                style={styles.previewImage}
+                contentFit="contain"
+              />
+              <Pressable
+                style={[
+                  styles.previewShareIcon,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={() => onShare(attachment)}
+              >
+                <Ionicons
+                  name="share-social-outline"
+                  size={20}
+                  color={colors.primaryForeground}
+                />
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
+    </Modal>
+  );
+}
 
-      <View style={styles.meta}>
-        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-          Created: {formatDate(snippet.createdAt)}
-        </Text>
-        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-          Updated: {formatDate(snippet.updatedAt)}
-        </Text>
-      </View>
-    </ScrollView>
+function ExportFormatModal({
+  activeMenu,
+  onClose,
+  onExport,
+  onShare,
+}: {
+  activeMenu: "export" | "share" | null;
+  onClose: () => void;
+  onExport: (format: SnippetExportFormat) => void;
+  onShare: (format: SnippetExportFormat) => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <Modal
+      transparent
+      animationType="fade"
+      visible={activeMenu !== null}
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.menuBackdrop} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.exportMenu,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.exportMenuTitle, { color: colors.foreground }]}>
+            {activeMenu === "share" ? "Share format" : "Export format"}
+          </Text>
+
+          {EXPORT_FORMAT_OPTIONS.map((option) => (
+            <Pressable
+              key={option.value}
+              style={[styles.exportMenuItem, { borderColor: colors.border }]}
+              onPress={() =>
+                activeMenu === "share"
+                  ? onShare(option.value)
+                  : onExport(option.value)
+              }
+            >
+              <View>
+                <Text
+                  style={[
+                    styles.exportMenuItemTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+                <Text
+                  style={[
+                    styles.exportMenuItemMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {option.description}
+                </Text>
+              </View>
+              <Ionicons
+                name={
+                  activeMenu === "share"
+                    ? "share-social-outline"
+                    : "download-outline"
+                }
+                size={18}
+                color={colors.codeAccent}
+              />
+            </Pressable>
+          ))}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -592,7 +1004,23 @@ const styles = StyleSheet.create({
   },
   title: {
     ...fontStyles.extraBold,
+    flex: 1,
     fontSize: 28,
+  },
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: -6,
   },
   language: {
     ...fontStyles.extraBold,
@@ -658,6 +1086,41 @@ const styles = StyleSheet.create({
     ...fontStyles.regular,
     fontSize: 13,
   },
+  aiActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  aiButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiButtonText: {
+    ...fontStyles.extraBold,
+    fontSize: 12,
+  },
+  aiPanel: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    marginTop: 12,
+  },
+  aiPanelTitle: {
+    ...fontStyles.extraBold,
+    fontSize: 15,
+    marginBottom: 10,
+  },
+  aiLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  aiLoadingText: {
+    ...fontStyles.regular,
+    fontSize: 13,
+  },
   attachmentRow: {
     flexDirection: "row",
     gap: 12,
@@ -668,6 +1131,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     overflow: "hidden",
+  },
+  attachmentPreviewButton: {
+    flex: 1,
   },
   attachmentImage: {
     width: "100%",
@@ -745,38 +1211,121 @@ const styles = StyleSheet.create({
     ...fontStyles.regular,
     fontSize: 12,
   },
-  exportButton: {
-    flex: 1,
-    height: 50,
-    borderRadius: 8,
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryActionText: {
-    ...fontStyles.extraBold,
-    fontSize: 14,
-  },
   exportActions: {
     marginTop: 24,
   },
-  exportGrid: {
+  exportDropdownRow: {
     flexDirection: "row",
     gap: 10,
     marginTop: 12,
   },
-  shareButton: {
+  exportDropdown: {
     flex: 1,
     height: 50,
     borderRadius: 8,
+    borderWidth: 1,
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 12,
   },
-  shareButtonText: {
+  exportDropdownText: {
+    ...fontStyles.extraBold,
+    flex: 1,
+    fontSize: 14,
+    textAlign: "center",
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.48)",
+    justifyContent: "flex-end",
+    padding: 18,
+  },
+  exportMenu: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 12,
+  },
+  exportMenuTitle: {
+    ...fontStyles.extraBold,
+    fontSize: 15,
+    marginBottom: 8,
+  },
+  exportMenuItem: {
+    minHeight: 58,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  exportMenuItemTitle: {
     ...fontStyles.extraBold,
     fontSize: 14,
+  },
+  exportMenuItemMeta: {
+    ...fontStyles.regular,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.74)",
+    justifyContent: "center",
+    padding: 18,
+  },
+  previewPanel: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 14,
+    maxHeight: "86%",
+  },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 12,
+  },
+  previewHeaderText: {
+    flex: 1,
+  },
+  previewTitle: {
+    ...fontStyles.extraBold,
+    fontSize: 16,
+  },
+  previewMeta: {
+    ...fontStyles.regular,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  previewClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewImageWrap: {
+    position: "relative",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  previewImage: {
+    width: "100%",
+    height: 420,
+    borderRadius: 8,
+  },
+  previewShareIcon: {
+    position: "absolute",
+    right: 8,
+    bottom: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -1,6 +1,15 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import EmptyState from "../../components/EmptyState";
 import SnippetCard from "../../components/SnippetCard";
 import { getFavoriteSnippets, toggleFavorite } from "../../db/snippet";
@@ -10,55 +19,123 @@ import { Snippet } from "../../types/snippet";
 
 export default function FavoritesScreen() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { colors } = useAppTheme();
 
-  const loadFavorites = useCallback(() => {
+  function loadFavorites() {
     setSnippets(getFavoriteSnippets());
-  }, []);
+    setIsLoading(false);
+  }
 
-  useFocusEffect(
-    useCallback(() => {
-      loadFavorites();
-    }, [loadFavorites]),
-  );
+  useFocusEffect(() => {
+    loadFavorites();
+  });
 
   function handleRemoveFavorite(snippet: Snippet) {
     toggleFavorite(snippet.id, false);
     loadFavorites();
   }
 
+  function handleRefresh() {
+    setIsRefreshing(true);
+    setSnippets(getFavoriteSnippets());
+    setIsRefreshing(false);
+  }
+
+  function handleOpenSnippet(snippet: Snippet) {
+    router.push(`/snippet/${snippet.id}`);
+  }
+
+  function renderSnippet({ item }: { item: Snippet }) {
+    return (
+      <FavoriteSnippetRow
+        snippet={item}
+        onOpen={handleOpenSnippet}
+        onRemove={handleRemoveFavorite}
+      />
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <View>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            Favorites
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Quick access to important snippets
-          </Text>
+          <View style={styles.headerTitleRow}>
+            <Pressable
+              style={[
+                styles.backButton,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+              onPress={() => router.back()}
+            >
+              <Ionicons
+                name="arrow-back"
+                size={24}
+                color={colors.foreground}
+              />
+            </Pressable>
+            <Text style={[styles.title, { color: colors.foreground }]}>
+              Favorites
+            </Text>
+          </View>
         </View>
       </View>
 
-      <FlatList
-        data={snippets}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <EmptyState
-            title="No favorites yet"
-            message="Mark snippets as favorites to see them here."
-          />
-        }
-        renderItem={({ item }) => (
-          <SnippetCard
-            snippet={item}
-            onPress={() => router.push(`/snippet/${item.id}`)}
-            onToggleFavorite={() => handleRemoveFavorite(item)}
-          />
-        )}
-      />
+      {isLoading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={snippets}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+              progressBackgroundColor={colors.card}
+            />
+          }
+          ListEmptyComponent={
+            <EmptyState
+              title="No favorites yet"
+              message="Mark snippets as favorites to see them here."
+            />
+          }
+          renderItem={renderSnippet}
+        />
+      )}
     </View>
+  );
+}
+
+function FavoriteSnippetRow({
+  onOpen,
+  onRemove,
+  snippet,
+}: {
+  onOpen: (snippet: Snippet) => void;
+  onRemove: (snippet: Snippet) => void;
+  snippet: Snippet;
+}) {
+  function handlePress() {
+    onOpen(snippet);
+  }
+
+  function handleToggleFavorite() {
+    onRemove(snippet);
+  }
+
+  return (
+    <SnippetCard
+      snippet={snippet}
+      onPress={handlePress}
+      onToggleFavorite={handleToggleFavorite}
+    />
   );
 }
 
@@ -78,14 +155,29 @@ const styles = StyleSheet.create({
     ...fontStyles.extraBold,
     fontSize: 30,
   },
-  subtitle: {
-    ...fontStyles.regular,
-    fontSize: 14,
-    marginTop: 4,
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: -6,
   },
   listContent: {
     paddingVertical: 18,
     gap: 12,
+  },
+  loader: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchInput: {
     ...fontStyles.regular,

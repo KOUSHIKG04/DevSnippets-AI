@@ -7,8 +7,10 @@ import {
   GeistMono_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/geist-mono";
+import { Image } from "expo-image";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { AppAlertProvider } from "../components/AppAlert";
 import { initializeDatabase } from "../db/database";
 import { configureDefaultFonts } from "../fontDefaults";
@@ -23,31 +25,44 @@ export default function RootLayout() {
     GeistMono_700Bold,
     GeistMono_800ExtraBold,
   });
+  const isReady = fontsLoaded || Boolean(fontError);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+    if (isReady) {
+      SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [isReady]);
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      configureDefaultFonts();
+    }
+  }, [fontsLoaded]);
 
   useEffect(() => {
     initializeDatabase();
   }, []);
 
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
-
-  if (fontsLoaded) {
-    configureDefaultFonts();
-  }
-
   return (
     <AppThemeProvider>
       <AppAlertProvider>
         <RootNavigator />
+        {!isReady && <BootSplash />}
       </AppAlertProvider>
     </AppThemeProvider>
+  );
+}
+
+function BootSplash() {
+  return (
+    <View style={styles.bootSplash}>
+      <Image
+        source={require("../../assets/images/splash-icon.png")}
+        style={styles.bootLogo}
+        contentFit="contain"
+      />
+      <Text style={styles.bootTitle}>DevShelf</Text>
+    </View>
   );
 }
 
@@ -66,3 +81,23 @@ function RootNavigator() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  bootSplash: {
+    ...StyleSheet.absoluteFillObject,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0A0A0A",
+  },
+  bootLogo: {
+    width: 180,
+    height: 180,
+  },
+  bootTitle: {
+    color: "#F8FAFC",
+    fontSize: 28,
+    fontWeight: "800",
+    marginTop: 28,
+  },
+});

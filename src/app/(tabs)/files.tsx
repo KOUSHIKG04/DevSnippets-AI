@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -74,6 +75,14 @@ const initialFilesByFolder: Record<FileFolder, LocalFile[]> = {
   templates: [],
 };
 
+function getTargetFolder(folder: FileFolder): FileFolder | null {
+  if (folder === "attachments") {
+    return null;
+  }
+
+  return folder === "templates" ? "exports" : "templates";
+}
+
 export default function FilesScreen() {
   const { colors } = useAppTheme();
   const { showAlert } = useAppAlert();
@@ -81,6 +90,7 @@ export default function FilesScreen() {
   const [activeFolder, setActiveFolder] = useState<FileFolder>("exports");
   const [filesByFolder, setFilesByFolder] =
     useState<Record<FileFolder, LocalFile[]>>(initialFilesByFolder);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const files = filesByFolder[activeFolder];
 
   function loadFiles(
@@ -136,12 +146,10 @@ export default function FilesScreen() {
     loadFiles(folder);
   }
 
-  function getTargetFolder(folder: FileFolder): FileFolder | null {
-    if (folder === "attachments") {
-      return null;
-    }
-
-    return folder === "templates" ? "exports" : "templates";
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await loadFiles(activeFolder);
+    setIsRefreshing(false);
   }
 
   function handleDelete(file: LocalFile) {
@@ -249,6 +257,15 @@ export default function FilesScreen() {
         data={files}
         keyExtractor={(item) => item.uri}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.card}
+          />
+        }
         ListHeaderComponent={
           activeFolder === "templates" ? (
             <TemplatePanel onSaveTemplate={handleSaveTemplate} />

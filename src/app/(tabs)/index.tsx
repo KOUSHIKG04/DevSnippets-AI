@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
+  RefreshControl,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -26,7 +27,10 @@ export default function HomeScreen() {
   const [search, setSearch] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadingState, setLoadingState] = useState({
+    isLoading: true,
+    isRefreshing: false,
+  });
   const { width } = useWindowDimensions();
   const { colors, colorScheme } = useAppTheme();
   const { showAlert } = useAppAlert();
@@ -39,7 +43,10 @@ export default function HomeScreen() {
     } catch {
       showAlert("Storage error", "Could not load snippets.");
     }
-    setIsLoading(false);
+    setLoadingState((currentState) => ({
+      ...currentState,
+      isLoading: false,
+    }));
   }
 
   useFocusEffect(() => {
@@ -68,6 +75,18 @@ export default function HomeScreen() {
   function handleToggleFavorite(snippet: Snippet) {
     toggleFavorite(snippet.id, !snippet.isFavorite);
     loadSnippets();
+  }
+
+  function handleRefresh() {
+    setLoadingState((currentState) => ({
+      ...currentState,
+      isRefreshing: true,
+    }));
+    loadSnippets();
+    setLoadingState((currentState) => ({
+      ...currentState,
+      isRefreshing: false,
+    }));
   }
 
   function renderSnippet({ item }: { item: Snippet }) {
@@ -102,7 +121,7 @@ export default function HomeScreen() {
           },
         ]}
       />
-      {isLoading ? (
+      {loadingState.isLoading ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -113,6 +132,15 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={loadingState.isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+              progressBackgroundColor={colors.card}
+            />
+          }
           contentContainerStyle={[
             styles.listContent,
             {

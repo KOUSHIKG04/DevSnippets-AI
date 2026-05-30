@@ -7,10 +7,12 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Animated, {
   Easing,
@@ -136,6 +138,7 @@ export default function SnippetDetailsScreen() {
     initialDetailUiState,
   );
   const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { colors } = useAppTheme();
   const { showAlert } = useAppAlert();
 
@@ -176,6 +179,12 @@ export default function SnippetDetailsScreen() {
 
     toggleFavorite(snippet.id, !snippet.isFavorite);
     loadSnippet();
+  }
+
+  function handleRefresh() {
+    setIsRefreshing(true);
+    loadSnippet();
+    setIsRefreshing(false);
   }
 
   function handleDelete() {
@@ -364,6 +373,16 @@ export default function SnippetDetailsScreen() {
         style={styles.screen}
         contentContainerStyle={styles.container}
         onScroll={(event) => handleScroll(event.nativeEvent.contentOffset.y)}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.card}
+          />
+        }
+        scrollEnabled={!uiState.isAiWindowOpen}
         scrollEventThrottle={16}
       >
         <SnippetDetailHeader
@@ -541,9 +560,12 @@ function FloatingAiAssistant({
   uiState: DetailUiState;
 }) {
   const { colors, fonts } = useAppTheme();
+  const { height } = useWindowDimensions();
   const pulseProgress = useSharedValue(0);
   const verticalOffset = useSharedValue(0);
   const shouldShowWindow = uiState.isAiWindowOpen;
+  const panelMaxHeight = Math.min(Math.max(height - 190, 240), 540);
+  const responseMaxHeight = Math.max(panelMaxHeight - 74, 160);
 
   useEffect(() => {
     pulseProgress.set(withRepeat(
@@ -592,61 +614,79 @@ function FloatingAiAssistant({
       ]}
     >
       {shouldShowWindow && (
-        <View
-          style={[
-            styles.floatingAiPanel,
-            isAtTop ? styles.floatingAiPanelBelow : styles.floatingAiPanelAbove,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+        <Modal
+          transparent
+          animationType="fade"
+          visible={shouldShowWindow}
+          onRequestClose={onCloseWindow}
         >
-          <View style={styles.floatingAiPanelHeader}>
-            <View style={styles.floatingAiPanelTitleBlock}>
-              <Text
-                style={[styles.aiPanelTitle, { color: colors.foreground }]}
-              >
-                {uiState.aiInsightKind
-                  ? getInsightTitle(uiState.aiInsightKind)
-                  : "AI response"}
-              </Text>
-            </View>
-            <Pressable
+          <View style={styles.floatingAiModal}>
+            <View
               style={[
-                styles.floatingAiClose,
-                { backgroundColor: colors.secondary },
+                styles.floatingAiPanel,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  maxHeight: panelMaxHeight,
+                },
               ]}
-              onPress={onCloseWindow}
             >
-              <Ionicons name="close" size={18} color={colors.foreground} />
-            </Pressable>
-          </View>
+              <View style={styles.floatingAiPanelHeader}>
+                <View style={styles.floatingAiPanelTitleBlock}>
+                  <Text
+                    style={[styles.aiPanelTitle, { color: colors.foreground }]}
+                  >
+                    {uiState.aiInsightKind
+                      ? getInsightTitle(uiState.aiInsightKind)
+                      : "AI response"}
+                  </Text>
+                </View>
+                <Pressable
+                  style={[
+                    styles.floatingAiClose,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                  onPress={onCloseWindow}
+                >
+                  <Ionicons name="close" size={18} color={colors.foreground} />
+                </Pressable>
+              </View>
 
-          {uiState.isGeneratingInsight ? (
-            <View style={styles.aiLoading}>
-              <ActivityIndicator color={colors.primary} />
-              <Text
-                style={[
-                  styles.aiLoadingText,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                Generating…
-              </Text>
+              {uiState.isGeneratingInsight ? (
+                <View style={styles.aiLoading}>
+                  <ActivityIndicator color={colors.primary} />
+                  <Text
+                    style={[
+                      styles.aiLoadingText,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    Generating…
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView
+                  nestedScrollEnabled
+                  bounces
+                  alwaysBounceVertical={false}
+                  showsVerticalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                  style={[
+                    styles.floatingAiResponse,
+                    { height: responseMaxHeight },
+                  ]}
+                  contentContainerStyle={styles.floatingAiResponseContent}
+                >
+                  <AiFormattedText
+                    text={uiState.aiInsight}
+                    colors={colors}
+                    monoFontFamily={fonts.mono}
+                  />
+                </ScrollView>
+              )}
             </View>
-          ) : (
-            <ScrollView
-              nestedScrollEnabled
-              showsVerticalScrollIndicator
-              style={styles.floatingAiResponse}
-              contentContainerStyle={styles.floatingAiResponseContent}
-            >
-              <AiFormattedText
-                text={uiState.aiInsight}
-                colors={colors}
-                monoFontFamily={fonts.mono}
-              />
-            </ScrollView>
-          )}
-        </View>
+          </View>
+        </Modal>
       )}
 
       {uiState.isAiMenuOpen && (
@@ -1352,12 +1392,16 @@ const styles = StyleSheet.create({
     ...fontStyles.extraBold,
     fontSize: 12,
   },
+  floatingAiModal: {
+    flex: 1,
+    justifyContent: "flex-end",
+    paddingHorizontal: 18,
+    paddingBottom: 108,
+  },
   floatingAiPanel: {
-    position: "absolute",
-    right: 0,
     width: "100%",
+    alignSelf: "flex-end",
     maxWidth: 370,
-    maxHeight: 540,
     borderRadius: 8,
     borderWidth: 1,
     padding: 14,
@@ -1387,7 +1431,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   floatingAiResponse: {
-    height: 452,
+    flexGrow: 0,
   },
   floatingAiResponseContent: {
     paddingBottom: 12,

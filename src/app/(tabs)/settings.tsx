@@ -7,6 +7,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -92,6 +93,7 @@ function settingsReducer(
 
 export default function SettingsScreen() {
   const [isLanguagePickerOpen, setIsLanguagePickerOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [settings, dispatchSettings] = useReducer(
     settingsReducer,
     initialSettingsState,
@@ -99,22 +101,22 @@ export default function SettingsScreen() {
   const { colors, setEditorFontSize } = useAppTheme();
   const { showAlert } = useAppAlert();
 
+  async function loadSettings() {
+    const [storedLanguage, storedFontSize, storedApiKey] = await Promise.all([
+      getDefaultLanguage(),
+      getEditorFontSize(),
+      getAiApiKey(),
+    ]);
+
+    dispatchSettings({
+      defaultLanguage: storedLanguage,
+      fontSize: storedFontSize,
+      hasSavedApiKey: Boolean(storedApiKey),
+      type: "load",
+    });
+  }
+
   useEffect(() => {
-    async function loadSettings() {
-      const [storedLanguage, storedFontSize, storedApiKey] = await Promise.all([
-        getDefaultLanguage(),
-        getEditorFontSize(),
-        getAiApiKey(),
-      ]);
-
-      dispatchSettings({
-        defaultLanguage: storedLanguage,
-        fontSize: storedFontSize,
-        hasSavedApiKey: Boolean(storedApiKey),
-        type: "load",
-      });
-    }
-
     loadSettings();
   }, []);
 
@@ -208,6 +210,12 @@ export default function SettingsScreen() {
     setIsLanguagePickerOpen(false);
   }
 
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await loadSettings();
+    setIsRefreshing(false);
+  }
+
   function renderLanguageOption({ item }: { item: string }) {
     return (
       <SettingsLanguageOptionRow
@@ -222,6 +230,15 @@ export default function SettingsScreen() {
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+          progressBackgroundColor={colors.card}
+        />
+      }
     >
       <SettingsHeader />
       <ApiKeySettingsCard

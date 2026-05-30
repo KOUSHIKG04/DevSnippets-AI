@@ -205,30 +205,35 @@
             />
           </View>
 
-          <Pressable
-            style={[styles.saveButton, { backgroundColor: colors.primary }]}
-            onPress={handleSave}
-          >
-            <Text
-              style={[
-                styles.saveButtonText,
-                { color: colors.primaryForeground },
-              ]}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={[styles.cancelButton, { borderColor: colors.input }]}
+              onPress={() => router.back()}
             >
-              Save Changes
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.cancelButtonText,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Cancel
+              </Text>
+            </Pressable>
 
-          <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-            <Text
-              style={[
-                styles.cancelButtonText,
-                { color: colors.mutedForeground },
-              ]}
+            <Pressable
+              style={[styles.saveButton, { backgroundColor: colors.primary }]}
+              onPress={handleSave}
             >
-              Cancel
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.saveButtonText,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                Save
+              </Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -294,22 +299,29 @@
     codeInput: {
       minHeight: 240,
     },
+    actionRow: {
+      flexDirection: "row",
+      gap: 12,
+      marginTop: 8,
+    },
     saveButton: {
+      flex: 1,
       height: 52,
       borderRadius: 8,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 8,
     },
     saveButtonText: {
       ...fontStyles.extraBold,
       fontSize: 16,
     },
     cancelButton: {
-      height: 48,
+      flex: 1,
+      height: 52,
+      borderRadius: 8,
+      borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: 8,
     },
     cancelButtonText: {
       ...fontStyles.bold,

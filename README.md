@@ -27,6 +27,13 @@ DevShelf is an Expo, React Native, and TypeScript mobile app for saving, organiz
 | GitHub Repository | https://github.com/KOUSHIKG04/DevSnippets-AI |
 | Demo Video | https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41 |
 
+## Demo Video
+
+<video src="https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41" controls width="320">
+  Your browser does not support embedded videos. Open the demo video here:
+  https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41
+</video>
+
 ## Screenshots
 
 <p>

@@ -20,10 +20,38 @@
 
 DevShelf is an Expo, React Native, and TypeScript mobile app for saving, organizing, exporting, and understanding reusable code snippets directly on-device. The app is offline-first for core snippet and file workflows, with optional Gemini-powered AI explanations when an internet connection and API key are available.
 
+## Submission
+
+| Item | Link |
+| --- | --- |
+| GitHub Repository | https://github.com/KOUSHIKG04/DevSnippets-AI |
+| Demo Video | https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41 |
+
+## Screenshots
+
+<p>
+  <img width="220" alt="DevShelf screenshot 1" src="https://github.com/user-attachments/assets/3facbe30-8238-42d0-b487-616613ffd64d" />
+  <img width="220" alt="DevShelf screenshot 2" src="https://github.com/user-attachments/assets/4f96f86a-8d66-4995-bbb9-9ab80f032c35" />
+  <img width="220" alt="DevShelf screenshot 3" src="https://github.com/user-attachments/assets/a468c80d-d1f3-46fe-8e0d-78ea9b66fc6d" />
+  <img width="220" alt="DevShelf screenshot 4" src="https://github.com/user-attachments/assets/bfd1915d-2257-4576-adda-885f50553c50" />
+  <img width="220" alt="DevShelf screenshot 5" src="https://github.com/user-attachments/assets/bca0b292-91f7-430b-b718-ff22177e0718" />
+</p>
+
+## Brief Explanation
+
+DevShelf uses SQLite as the main offline database for snippet records and snippet attachment metadata. The app creates a `snippets` table for title, code, language, tags, favorite state, and timestamps, plus a `snippet_attachments` table that links locally saved screenshot files back to snippets. This keeps create, edit, delete, search, and favorite workflows available without an internet connection.
+
+The offline storage approach separates data by responsibility. SQLite stores structured snippet data, AsyncStorage stores lightweight app preferences such as theme, default language, and editor font size, SecureStore stores the Gemini API key, and Expo FileSystem stores local files under app document storage. Because snippet and file operations read from local storage first, the core app remains usable offline.
+
+File management is implemented with Expo FileSystem. The app creates local `exports`, `attachments`, and `templates` folders, then lets users save snippet exports, attach screenshots, browse stored files, delete files, copy or move files between supported folders, and use saved templates when creating snippets. Expo Sharing is used when the user wants to share an exported snippet or attachment with another app.
+
+The AI workflow is optional and internet-dependent. The user saves a Gemini API key in Settings, the key is stored securely with SecureStore, and the Snippet Details screen can request an explanation, summary, or improvement suggestions for the selected snippet. The app sends the snippet title, language, tags, and code to Gemini, then renders the response in a formatted scrollable AI window.
+
 ## Navigation
 
 | Section | What It Covers |
 | --- | --- |
+| [Submission](#submission) | Repository, demo video, and screenshots |
 | [Tech Stack](#tech-stack) | Frameworks, storage, file, and AI tools |
 | [Features](#features) | Core app capabilities |
 | [Project Structure](#project-structure) | Main source folders and route layout |

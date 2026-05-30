@@ -20,19 +20,16 @@
 
 DevShelf is an Expo, React Native, and TypeScript mobile app for saving, organizing, exporting, and understanding reusable code snippets directly on-device. The app is offline-first for core snippet and file workflows, with optional Gemini-powered AI explanations when an internet connection and API key are available.
 
-## Submission
-
-| Item | Link |
-| --- | --- |
-| GitHub Repository | https://github.com/KOUSHIKG04/DevSnippets-AI |
-| Demo Video | https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41 |
-
 ## Demo Video
 
-<video src="https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41" controls width="320">
-  Your browser does not support embedded videos. Open the demo video here:
-  https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41
-</video>
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41" controls width="720">
+    Your browser does not support embedded videos. Open the demo video here:
+    https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41
+  </video>
+</p>
+
+Demo video: https://github.com/user-attachments/assets/3c7feb15-90ae-4f19-922d-bdbe750a5a41
 
 ## Screenshots
 
@@ -58,7 +55,6 @@ The AI workflow is optional and internet-dependent. The user saves a Gemini API 
 
 | Section | What It Covers |
 | --- | --- |
-| [Submission](#submission) | Repository, demo video, and screenshots |
 | [Tech Stack](#tech-stack) | Frameworks, storage, file, and AI tools |
 | [Features](#features) | Core app capabilities |
 | [Project Structure](#project-structure) | Main source folders and route layout |
@@ -324,38 +320,70 @@ Exports are saved locally before sharing so they also appear in the Files tab.
 
 ## Running The App
 
-Install dependencies:
+### Prerequisites
+
+| Tool | Version / Notes |
+| --- | --- |
+| Node.js | 20.19.x or newer recommended for Expo SDK 55 |
+| npm | Ships with Node.js |
+| Expo CLI | Use through `npx expo ...` |
+| Device runtime | Expo Go for supported modules, or a development build when using `expo-dev-client` |
+
+### Install
 
 ```bash
 npm install
 ```
 
-Start Expo:
+### Start In Expo Go
+
+```bash
+npx expo start --go
+```
+
+Scan the QR code with Expo Go. If Metro serves stale routes or old assets, restart with a clean cache:
+
+```bash
+npx expo start --go -c
+```
+
+### Start With Development Build
+
+This project includes `expo-dev-client`, so a development build can also be used when testing native-development workflows:
 
 ```bash
 npx expo start
 ```
 
-Clear cache after route/file moves:
+Open the project from the installed development build on the device or emulator.
 
-```bash
-npx expo start -c
-```
+### AI Setup
 
-Run lint:
+AI features are optional. To enable explanations, summaries, and improvement suggestions:
+
+1. Open the Settings screen.
+2. Paste a valid Gemini API key.
+3. Save settings.
+4. Open a snippet and use the floating `AI` action.
+
+The API key is stored with SecureStore and is never written to SQLite, AsyncStorage, or exported files.
+
+### Quality Checks
+
+Run these checks before submitting changes:
 
 ```bash
 npm run lint
 ```
 
-Run TypeScript check:
-
 ```bash
 npx tsc --noEmit
 ```
 
-Run React Doctor:
-
 ```bash
 npx react-doctor@latest --verbose --diff
 ```
+
+### Offline Verification
+
+To verify offline-first behavior, start the app once, create a few snippets, then disable network access on the device. Snippet create/edit/delete/search, favorites, local exports, saved templates, and saved attachments should continue to work. AI generation is the only major workflow that requires internet access.
